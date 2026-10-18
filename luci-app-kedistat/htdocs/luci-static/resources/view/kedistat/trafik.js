@@ -665,7 +665,7 @@ return view.extend({
 	},
 	/* Yedekleme: tüm sayaç verisini dosyaya indir / dosyadan geri yükle */
 	buildBackup() {
-		const msg = h('div', { 'class': 'ks-upd-st' }, 'Sayaç verilerini (günlük, aylık, cihaz başına) tek dosyaya yedekleyebilirsin.');
+		const msg = h('div', { 'class': 'ks-upd-st' }, 'Sayaç verilerini tek dosyaya yedekleyebilirsin.');
 		const say = (t, c) => { msg.className = 'ks-upd-st ' + (c || ''); msg.textContent = t; };
 		const btnB = h('button', { 'class': 'cbi-button' }, '⬇ Yedek indir');
 		const btnR = h('button', { 'class': 'cbi-button' }, '⬆ Yedekten geri yükle');
