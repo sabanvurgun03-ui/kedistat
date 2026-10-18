@@ -18,9 +18,9 @@ LuCI → **Araçlar** (yoksa **Hizmetler**) → **KediStat**.
 
 ## Ekran görüntüleri
 
-<p align="center"><img src="docs/onizleme.png" alt="KediStat Trafik sayfası" width="420">&nbsp;&nbsp;<img src="docs/onizleme-mobil.png" alt="KediStat mobil görünüm" width="260"></p>
+<p align="center"><img src="docs/onizleme.png" alt="KediStat" width="420"></p>
 
-*Örnek (sentetik) verilerle: canlı hız, dönem toplamları, cihaz kartları ve grafik.*
+*Örnek verilerle: canlı hız, dönem toplamları, cihaz kartları ve grafik.*
 
 ## Özellikler
 - Canlı hız, oturum, bugün/dün/hafta/ay/toplam kartları ve önceki dönemle karşılaştırma
