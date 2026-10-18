@@ -231,8 +231,13 @@ const CSS = `
 .ks-upd-st.ks-good{color:#3fb950;opacity:1}
 .ks-upd-btn{display:flex;flex-wrap:wrap;align-items:center;gap:10px}
 .ks-upd-auto{display:inline-flex;align-items:center;gap:6px;font-size:.88em;opacity:.85;cursor:pointer}
-.ks-gh{display:flex;flex-wrap:wrap;gap:10px;margin-top:8px}
-.ks-gh span{display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border-radius:999px;border:1px solid rgba(128,128,128,.28);background:rgba(128,128,128,.07);font-weight:600;font-variant-numeric:tabular-nums}
+.ks-gh{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px}
+.ks-gt{display:flex;flex-direction:column;align-items:center;gap:2px;padding:14px 8px 12px;border-radius:12px;border:1px solid rgba(128,128,128,.28);background:linear-gradient(160deg,rgba(128,128,128,.12),rgba(128,128,128,.02));color:inherit;text-decoration:none;transition:box-shadow .25s ease,transform .12s ease}
+.ks-gt:hover{box-shadow:0 0 10px rgba(128,128,128,.45);color:inherit;text-decoration:none}
+.ks-gt:active{transform:scale(.98)}
+.ks-gt i{font-style:normal;font-size:1.35em;line-height:1}
+.ks-gt b{font-size:1.9em;font-weight:700;line-height:1.1;font-variant-numeric:tabular-nums}
+.ks-gt small{opacity:.7;font-size:.84em}
 .ks-sup{margin:18px 0 6px;padding:14px 16px;border-radius:12px;border:1px solid rgba(255,221,0,.35);background:linear-gradient(160deg,rgba(255,221,0,.10),rgba(255,221,0,.02));display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px}
 .ks-sup b{display:block;font-size:1.02em;margin-bottom:2px}
 .ks-sup span{opacity:.75;font-size:.9em}
@@ -641,23 +646,29 @@ return view.extend({
 
 	/* GitHub yıldız ve indirme sayısı: modem GitHub API'sinden okur (6 saat önbellekli); ulaşılamazsa "—" gösterir */
 	buildRepoStats() {
-		const st = h('span', { 'title': '' }, '★ …');
-		const dl = h('span', { 'title': '' }, '⬇ …');
-		const none = why => { st.textContent = '★ —'; dl.textContent = '⬇ —'; st.title = dl.title = why; };
+		const REPO = 'https://github.com/sabanvurgun03-ui/kedistat';
+		const tile = (ico, color, label, href) => {
+			const num = h('b', {}, '…');
+			const a = h('a', { 'class': 'ks-gt', 'href': href, 'target': '_blank', 'rel': 'noopener noreferrer' }, [h('i', { 'style': 'color:' + color }, ico), num, h('small', {}, label)]);
+			return { a, num };
+		};
+		const st = tile('★', '#e3b341', 'yıldız', REPO + '/stargazers');
+		const dl = tile('⬇', '#3b82f6', 'indirme', REPO + '/releases');
+		const none = why => { st.num.textContent = dl.num.textContent = '—'; st.a.title = dl.a.title = why; };
 		fs.exec(CLI, ['repostats', '--json']).then(r => {
 			let j = null; try { j = JSON.parse((r.stdout || '').trim()); } catch (e) {}
 			if (!j || !j.ok) return none("GitHub'a ulaşılamadı");
 			const d = new Date(j.ts * 1000), p = n => String(n).padStart(2, '0');
 			const when = p(d.getDate()) + '.' + p(d.getMonth() + 1) + '.' + d.getFullYear() + ' ' + p(d.getHours()) + ':' + p(d.getMinutes());
 			const tip = 'Son güncelleme: ' + when + (j.stale ? " (GitHub'a ulaşılamadı, son kayıtlı değer)" : '');
-			st.textContent = '★ ' + j.stars + ' yıldız';
-			st.title = tip;
-			dl.textContent = '⬇ ' + (j.releases ? j.downloads + ' indirme' : '—');
-			dl.title = (j.releases ? "GitHub Releases'teki kurulum dosyasının (kedistat-install.sh) indirme sayısı. " : 'Depoda henüz GitHub Release yok; indirme sayısı Release dosyalarından okunur. ') + tip;
+			st.num.textContent = j.stars;
+			st.a.title = tip;
+			dl.num.textContent = j.releases ? j.downloads : '—';
+			dl.a.title = (j.releases ? "GitHub Releases'teki kurulum dosyasının (kedistat-install.sh) indirme sayısı. " : 'Depoda henüz GitHub Release yok; indirme sayısı Release dosyalarından okunur. ') + tip;
 		}).catch(() => none('Panel yanıt vermedi'));
 		return h('div', { 'class': 'ks-upd' }, [
-			h('div', { 'class': 'ks-upd-h' }, [h('b', {}, 'GitHub')]),
-			h('div', { 'class': 'ks-gh' }, [st, dl])
+			h('div', { 'class': 'ks-upd-h' }, [h('b', {}, '📊 İstatistikler'), h('span', { 'style': 'opacity:.6;font-size:.85em' }, 'GitHub')]),
+			h('div', { 'class': 'ks-gh' }, [st.a, dl.a])
 		]);
 	},
 
