@@ -231,6 +231,8 @@ const CSS = `
 .ks-upd-st.ks-good{color:#3fb950;opacity:1}
 .ks-upd-btn{display:flex;flex-wrap:wrap;align-items:center;gap:10px}
 .ks-upd-auto{display:inline-flex;align-items:center;gap:6px;font-size:.88em;opacity:.85;cursor:pointer}
+.ks-gh{display:flex;flex-wrap:wrap;gap:10px;margin-top:8px}
+.ks-gh span{display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border-radius:999px;border:1px solid rgba(128,128,128,.28);background:rgba(128,128,128,.07);font-weight:600;font-variant-numeric:tabular-nums}
 .ks-sup{margin:18px 0 6px;padding:14px 16px;border-radius:12px;border:1px solid rgba(255,221,0,.35);background:linear-gradient(160deg,rgba(255,221,0,.10),rgba(255,221,0,.02));display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px}
 .ks-sup b{display:block;font-size:1.02em;margin-bottom:2px}
 .ks-sup span{opacity:.75;font-size:.9em}
@@ -637,6 +639,28 @@ return view.extend({
 		]);
 	},
 
+	/* GitHub yıldız ve indirme sayısı: modem GitHub API'sinden okur (6 saat önbellekli); ulaşılamazsa "—" gösterir */
+	buildRepoStats() {
+		const st = h('span', { 'title': '' }, '★ …');
+		const dl = h('span', { 'title': '' }, '⬇ …');
+		const none = why => { st.textContent = '★ —'; dl.textContent = '⬇ —'; st.title = dl.title = why; };
+		fs.exec(CLI, ['repostats', '--json']).then(r => {
+			let j = null; try { j = JSON.parse((r.stdout || '').trim()); } catch (e) {}
+			if (!j || !j.ok) return none("GitHub'a ulaşılamadı");
+			const d = new Date(j.ts * 1000), p = n => String(n).padStart(2, '0');
+			const when = p(d.getDate()) + '.' + p(d.getMonth() + 1) + '.' + d.getFullYear() + ' ' + p(d.getHours()) + ':' + p(d.getMinutes());
+			const tip = 'Son güncelleme: ' + when + (j.stale ? " (GitHub'a ulaşılamadı, son kayıtlı değer)" : '');
+			st.textContent = '★ ' + j.stars + ' yıldız';
+			st.title = tip;
+			dl.textContent = '⬇ ' + (j.releases ? j.downloads + ' indirme' : '—');
+			dl.title = (j.releases ? "GitHub Releases'teki kurulum dosyasının (kedistat-install.sh) indirme sayısı. " : 'Depoda henüz GitHub Release yok; indirme sayısı Release dosyalarından okunur. ') + tip;
+		}).catch(() => none('Panel yanıt vermedi'));
+		return h('div', { 'class': 'ks-upd' }, [
+			h('div', { 'class': 'ks-upd-h' }, [h('b', {}, 'GitHub')]),
+			h('div', { 'class': 'ks-gh' }, [st, dl])
+		]);
+	},
+
 	/* Hız birimi seçici: MB/s (bayt) ya da Mbps (bit). Seçim tarayıcıda saklanır. */
 	buildRateSeg() {
 		const btns = {};
@@ -845,6 +869,7 @@ return view.extend({
 			h('h2', {}, [h('img', { 'src': '/luci-static/kedistat-logo.svg', 'style': 'height:1.3em;vertical-align:-0.25em;margin-right:8px;border-radius:6px' }), 'KediStat']),
 			this.elTraffic,
 			this.buildUpdate(),
+			this.buildRepoStats(),
 			this.buildBackup(),
 			h('div', { 'class': 'ks-sup' }, [
 				h('div', {}, [h('b', {}, '☕ Beğendin mi?'), h('span', {}, 'KediStat ücretsiz ve açık kaynak. Emeğe küçük bir destek çok değerli.')]),

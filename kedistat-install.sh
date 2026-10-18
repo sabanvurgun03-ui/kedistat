@@ -21,7 +21,7 @@ mkdir -p "$(dirname /usr/bin/kedistat)"
 cat > /usr/bin/kedistat.new <<'KEDISTAT_EOF_1'
 #!/bin/sh
 # KediStat — OpenWrt modem için trafik izleyici (toplam + cihaz başına). Geliştirici: Şaban Vurgun · 2026
-# Kullanım: kedistat stats | sample [save] | save | restore | reset | import | backup | restore-file <dosya> | version | update [check|bg|auto-set 0/1] | uninstall
+# Kullanım: kedistat stats | sample [save] | save | restore | reset | import | backup | restore-file <dosya> | version | repostats [--json] | update [check|bg|auto-set 0/1] | uninstall
 SHARE=/usr/share/kedistat
 RUN=/var/etc/kedistat
 REPO_DEF="sabanvurgun03-ui/kedistat"
@@ -158,6 +158,7 @@ cmd_update() { # check [--json] | install | bg | status | cached | auto | auto-s
 			echo started ;;
 		status) cat "$UPD_LOG" 2>/dev/null ;;
 		auto) # cron (günde bir): denetle; otomatik kurulum açıksa ve yenilik varsa kur
+			cmd_repostats refresh >/dev/null 2>&1 || true   # yıldız/indirme sayıları günde bir tazelenir
 			upd_check json > "$UPD_LAST.$$" 2>/dev/null && mv "$UPD_LAST.$$" "$UPD_LAST" || { rm -f "$UPD_LAST.$$"; return 0; }
 			if [ "$(cat "$UPD_AUTO" 2>/dev/null)" = 1 ] && grep -q '"fresh":true' "$UPD_LAST"; then
 				logger -t kedistat "otomatik güncelleme başlıyor"
@@ -170,6 +171,56 @@ cmd_update() { # check [--json] | install | bg | status | cached | auto | auto-s
 			[ -n "$rv" ] && echo "$rv" > "$UPD_REV"; echo ok ;;
 		*) upd_install ;;
 	esac
+}
+
+# ---------- GitHub deposu sayaçları: kedistat repostats [--json] [refresh] ----------
+# Yıldız sayısı ve Release'teki kurulum dosyasının (kedistat-install.sh) indirme sayısı. Anahtarsız GitHub API (saatte 60 istek/IP).
+# Sonuç RAM'de 6 saat saklanır; GitHub'a ulaşılamazsa son değer "stale" olarak döner.
+GHS_CACHE=/tmp/kedistat.ghstats    # "epoch|yıldız|indirme|release sayısı|depo"
+GHS_TTL=21600
+GHS_ASSET="kedistat-install.sh"
+ghget() { curl -fsSL -m 6 -A "kedistat" "$1" 2>/dev/null; }
+ghs_out() { # epoch yıldız indirme release depo stale(true|false) json(0|1)
+	if [ "$7" = 1 ]; then
+		printf '{"ok":true,"stars":%s,"downloads":%s,"releases":%s,"repo":"%s","ts":%s,"stale":%s}\n' "$2" "$3" "$4" "$5" "$1" "$6"
+	else
+		echo "Yıldız: $2 · İndirme: $3 ($4 release) · $5"
+		[ "$6" = true ] && echo "(GitHub'a ulaşılamadı; son kayıtlı değer)"
+	fi
+}
+cmd_repostats() { # [--json] [refresh]
+	local js=0 refresh=0 a repo now ts st dl rel ns nd=0 nr=0 ok=1 body page=1 c d
+	for a in "$@"; do case "$a" in --json) js=1 ;; refresh) refresh=1 ;; esac; done
+	now=$(date +%s)
+	[ -s "$GHS_CACHE" ] && IFS='|' read -r ts st dl rel repo < "$GHS_CACHE"
+	case "$ts" in ''|*[!0-9]*) ts="" ;; esac
+	if [ $refresh = 0 ] && [ -n "$ts" ] && [ $((now - ts)) -lt $GHS_TTL ]; then
+		ghs_out "$ts" "$st" "$dl" "$rel" "$repo" false $js; return 0
+	fi
+	repo="${KS_REPO:-$REPO_DEF}"
+	body=$(ghget "https://api.github.com/repos/$repo") || ok=0
+	ns=$(echo "$body" | grep -oE '"stargazers_count": *[0-9]+' | head -n1 | tr -cd '0-9')
+	[ -n "$ns" ] || ok=0
+	if [ $ok = 1 ]; then
+		while [ $page -le 3 ]; do
+			body=$(ghget "https://api.github.com/repos/$repo/releases?per_page=100&page=$page") || { ok=0; break; }
+			c=$(echo "$body" | grep -oE '"tag_name": *"' | wc -l | tr -d ' ')
+			d=$(echo "$body" | grep -oE '"name": *"[^"]*"|"download_count": *[0-9]+' | awk -v want="$GHS_ASSET" '
+				/^"name"/ { n = $0; sub(/^"name": *"/, "", n); sub(/"$/, "", n); last = n; next }
+				{ v = $0; gsub(/[^0-9]/, "", v); if (last == want) s += v }
+				END { print s + 0 }')
+			nd=$((nd + d)); nr=$((nr + c))
+			[ "$c" -lt 100 ] && break
+			page=$((page + 1))
+		done
+	fi
+	if [ $ok = 1 ]; then
+		printf '%s|%s|%s|%s|%s\n' "$now" "$ns" "$nd" "$nr" "$repo" > "$GHS_CACHE" 2>/dev/null
+		ghs_out "$now" "$ns" "$nd" "$nr" "$repo" false $js; return 0
+	fi
+	if [ -n "$ts" ]; then ghs_out "$ts" "$st" "$dl" "$rel" "$repo" true $js; return 0; fi
+	[ $js = 1 ] && echo '{"ok":false}' || echo "GitHub'a ulaşılamadı"
+	return 1
 }
 
 cmd_uninstall() {
@@ -190,9 +241,10 @@ case "$1" in
 	save|restore|reset|import|backup) ucode "$SHARE/traffic.uc" "$1" ;;
 	restore-file) ( traffic_env; ucode "$SHARE/traffic.uc" restorefile "${2:-/tmp/kedistat-restore.json}" ) ;;
 	version) echo "KediStat $(ks_version)" ;;
+	repostats) shift; cmd_repostats "$@" ;;
 	update) shift; cmd_update "$@" ;;
 	uninstall) cmd_uninstall ;;
-	*) echo "kullanım: kedistat stats | sample [save] | save | restore | reset | import | backup | restore-file <dosya> | version | update [check|bg|auto-set 0/1] | uninstall" >&2; exit 1 ;;
+	*) echo "kullanım: kedistat stats | sample [save] | save | restore | reset | import | backup | restore-file <dosya> | version | repostats [--json] | update [check|bg|auto-set 0/1] | uninstall" >&2; exit 1 ;;
 esac
 KEDISTAT_EOF_1
 chmod 755 /usr/bin/kedistat.new
@@ -776,6 +828,8 @@ const CSS = `
 .ks-upd-st.ks-good{color:#3fb950;opacity:1}
 .ks-upd-btn{display:flex;flex-wrap:wrap;align-items:center;gap:10px}
 .ks-upd-auto{display:inline-flex;align-items:center;gap:6px;font-size:.88em;opacity:.85;cursor:pointer}
+.ks-gh{display:flex;flex-wrap:wrap;gap:10px;margin-top:8px}
+.ks-gh span{display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border-radius:999px;border:1px solid rgba(128,128,128,.28);background:rgba(128,128,128,.07);font-weight:600;font-variant-numeric:tabular-nums}
 .ks-sup{margin:18px 0 6px;padding:14px 16px;border-radius:12px;border:1px solid rgba(255,221,0,.35);background:linear-gradient(160deg,rgba(255,221,0,.10),rgba(255,221,0,.02));display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px}
 .ks-sup b{display:block;font-size:1.02em;margin-bottom:2px}
 .ks-sup span{opacity:.75;font-size:.9em}
@@ -1182,6 +1236,28 @@ return view.extend({
 		]);
 	},
 
+	/* GitHub yıldız ve indirme sayısı: modem GitHub API'sinden okur (6 saat önbellekli); ulaşılamazsa "—" gösterir */
+	buildRepoStats() {
+		const st = h('span', { 'title': '' }, '★ …');
+		const dl = h('span', { 'title': '' }, '⬇ …');
+		const none = why => { st.textContent = '★ —'; dl.textContent = '⬇ —'; st.title = dl.title = why; };
+		fs.exec(CLI, ['repostats', '--json']).then(r => {
+			let j = null; try { j = JSON.parse((r.stdout || '').trim()); } catch (e) {}
+			if (!j || !j.ok) return none("GitHub'a ulaşılamadı");
+			const d = new Date(j.ts * 1000), p = n => String(n).padStart(2, '0');
+			const when = p(d.getDate()) + '.' + p(d.getMonth() + 1) + '.' + d.getFullYear() + ' ' + p(d.getHours()) + ':' + p(d.getMinutes());
+			const tip = 'Son güncelleme: ' + when + (j.stale ? " (GitHub'a ulaşılamadı, son kayıtlı değer)" : '');
+			st.textContent = '★ ' + j.stars + ' yıldız';
+			st.title = tip;
+			dl.textContent = '⬇ ' + (j.releases ? j.downloads + ' indirme' : '—');
+			dl.title = (j.releases ? "GitHub Releases'teki kurulum dosyasının (kedistat-install.sh) indirme sayısı. " : 'Depoda henüz GitHub Release yok; indirme sayısı Release dosyalarından okunur. ') + tip;
+		}).catch(() => none('Panel yanıt vermedi'));
+		return h('div', { 'class': 'ks-upd' }, [
+			h('div', { 'class': 'ks-upd-h' }, [h('b', {}, 'GitHub')]),
+			h('div', { 'class': 'ks-gh' }, [st, dl])
+		]);
+	},
+
 	/* Hız birimi seçici: MB/s (bayt) ya da Mbps (bit). Seçim tarayıcıda saklanır. */
 	buildRateSeg() {
 		const btns = {};
@@ -1390,6 +1466,7 @@ return view.extend({
 			h('h2', {}, [h('img', { 'src': '/luci-static/kedistat-logo.svg', 'style': 'height:1.3em;vertical-align:-0.25em;margin-right:8px;border-radius:6px' }), 'KediStat']),
 			this.elTraffic,
 			this.buildUpdate(),
+			this.buildRepoStats(),
 			this.buildBackup(),
 			h('div', { 'class': 'ks-sup' }, [
 				h('div', {}, [h('b', {}, '☕ Beğendin mi?'), h('span', {}, 'KediStat ücretsiz ve açık kaynak. Emeğe küçük bir destek çok değerli.')]),
