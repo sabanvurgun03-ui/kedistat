@@ -943,6 +943,37 @@ return view.extend({
 		if (v) v.textContent = z + '%';
 		return z;
 	},
+	/* Tema: Otomatik (LuCI'nin kendi teması) → Koyu → Açık; tercih tarayıcıda saklanır */
+	themeApply(mode) {
+		mode = (mode === 'dark' || mode === 'light') ? mode : 'auto';
+		try { localStorage.setItem('kedistat-theme', mode); } catch (e) {}
+		let st = document.getElementById('ks-theme-css');
+		if (!st) { st = document.createElement('style'); st.id = 'ks-theme-css'; document.head.appendChild(st); }
+		let css = '';
+		if (mode !== 'auto') {
+			const d = mode === 'dark';
+			const bg = d ? '#14181e' : '#f3f5f8', fg = d ? '#e4e8ee' : '#1b2330', card = d ? '#1d232c' : '#ffffff',
+				bd = d ? '#333b47' : '#d3dae3', inp = d ? '#252c37' : '#ffffff';
+			css = 'html,body,body .main,body .main-right,body #maincontent,body #view,body .cbi-map,body .cbi-section,body .cbi-tabcontainer,body .cbi-section-node{background:' + bg + '!important;color:' + fg + '!important}'
+				+ 'body header,body .modal{background:' + card + '!important;color:' + fg + '!important}'
+				+ 'body header a,body .menu a,body label,body h1,body h2,body h3,body p,body td,body th{color:' + fg + '!important}'
+				+ '.kr-card{background:' + card + '!important;border-color:' + bd + '!important}'
+				+ 'body input,body select,body textarea,body .cbi-dropdown{background:' + inp + '!important;color:' + fg + '!important;border-color:' + bd + '!important}'
+				+ 'body .table .tr,body .table .th,body .table .td,body .cbi-section-table-row{background:transparent!important}'
+				+ 'body .btn,body .cbi-button{background:' + inp + '!important;color:' + fg + '!important;border-color:' + bd + '!important}'
+				+ 'body .cbi-button-negative{color:#e05252!important;border-color:#e05252!important}'
+				+ 'body .cbi-button-positive{background:#22a355!important;color:#fff!important;border-color:#22a355!important}'
+				+ 'body .cbi-button-action{background:#2a7de1!important;color:#fff!important;border-color:#2a7de1!important}';
+		}
+		st.textContent = css;
+		document.documentElement.setAttribute('data-krt', mode);
+		const b = document.getElementById('ks-theme-btn');
+		if (b) {
+			b.textContent = mode === 'dark' ? '🌙' : (mode === 'light' ? '☀️' : '◐');
+			b.title = 'Tema: ' + (mode === 'dark' ? 'Koyu' : (mode === 'light' ? 'Açık' : 'Otomatik')) + ' (değiştirmek için tıkla)';
+		}
+		return mode;
+	},
 	zoomBar() {
 		let z = 100;
 		try { z = +localStorage.getItem('kedistat-zoom') || 100; } catch (e) {}
@@ -951,10 +982,17 @@ return view.extend({
 		const bar = h('div', { 'id': 'ks-zoom', 'class': 'ks-zoom' }, [
 			h('button', { 'type': 'button', 'title': 'Uzaklaştır', 'click': ev => { ev.preventDefault(); z = this.zoomApply(z - 10); } }, '−'),
 			h('button', { 'type': 'button', 'id': 'ks-zoom-val', 'title': 'Sıfırla (%100)', 'class': 'ks-zv', 'click': ev => { ev.preventDefault(); z = this.zoomApply(100); } }, '100%'),
-			h('button', { 'type': 'button', 'title': 'Yakınlaştır', 'click': ev => { ev.preventDefault(); z = this.zoomApply(z + 10); } }, '+')
+			h('button', { 'type': 'button', 'title': 'Yakınlaştır', 'click': ev => { ev.preventDefault(); z = this.zoomApply(z + 10); } }, '+'),
+			h('button', { 'type': 'button', 'id': 'ks-theme-btn', 'click': ev => {
+				ev.preventDefault();
+				let m = 'auto'; try { m = localStorage.getItem('kedistat-theme') || 'auto'; } catch (e) {}
+				this.themeApply(m === 'auto' ? 'dark' : (m === 'dark' ? 'light' : 'auto'));
+			} }, '◐')
 		]);
 		document.body.appendChild(bar);
 		z = this.zoomApply(z);
+		let tm = 'auto'; try { tm = localStorage.getItem('kedistat-theme') || 'auto'; } catch (e) {}
+		this.themeApply(tm);
 	},
 
 	trafficBuilt: false,

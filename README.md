@@ -32,7 +32,7 @@ LuCI → **Araçlar** (yoksa **Hizmetler**) → **KediStat**.
 - Sayfadan GitHub güncellemesi: denetle / şimdi güncelle / günde bir otomatik denetim ve isteğe bağlı otomatik kurulum (sürüm aynı kalsa da depodaki yeni commit yakalanır)
 - Yedekleme: panelden yedek dosyası indir / dosyadan geri yükle (`kedistat backup`, `kedistat restore-file`)
 - İstatistikler kartı: GitHub deposundaki yıldız ve indirme sayısı (modem GitHub'dan okur, 6 saat önbellekler; indirme sayısı Release'teki `kedistat-install.sh` dosyasından gelir)
-- Kart özelleştirme (⚙ Düzenle: bölümleri gizle/sırala, dönem kartlarını seç) ve yakınlaştırma (−/%/+, %60-160); ayarlar tarayıcıda saklanır
+- Kart özelleştirme (⚙ Düzenle: bölümleri gizle/sırala, dönem kartlarını seç), yakınlaştırma (−/%/+, %60-160) ve koyu/açık/otomatik tema düğmesi (◐); ayarlar tarayıcıda saklanır
 - Sayaçlar RAM'de tutulur, düzenli aralıkla flaşa yazılır; yeniden başlatmada geri yüklenir
 
 ## Komutlar
@@ -80,7 +80,7 @@ LuCI → **Tools** (or **Services** if there is no Tools menu) → **KediStat**.
 - GitHub updates from the page: check / update now / daily automatic check and optional automatic install (a new commit in the repo is detected even when the version stays the same)
 - Backup: download a backup file from the page / restore from a file (`kedistat backup`, `kedistat restore-file`)
 - Statistics card: GitHub stars and downloads of the repo (the router reads them from GitHub and caches them for 6 hours; downloads come from `kedistat-install.sh` attached to a Release)
-- Card customization (⚙ Edit: hide/reorder sections, choose period cards) and zoom (−/%/+, 60-160%); settings are kept in the browser
+- Card customization (⚙ Edit: hide/reorder sections, choose period cards), zoom (−/%/+, 60-160%) and a dark/light/auto theme button (◐); settings are kept in the browser
 - Counters are kept in RAM and written to flash at regular intervals; they are restored after a reboot
 
 ### Commands
