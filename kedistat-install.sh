@@ -177,7 +177,7 @@ cmd_update() { # check [--json] | install | bg | status | cached | auto | auto-s
 # Yıldız sayısı ve Release'teki kurulum dosyasının (kedistat-install.sh) indirme sayısı. Anahtarsız GitHub API (saatte 60 istek/IP).
 # Sonuç RAM'de 6 saat saklanır; GitHub'a ulaşılamazsa son değer "stale" olarak döner.
 GHS_CACHE=/tmp/kedistat.ghstats    # "epoch|yıldız|indirme|release sayısı|depo"
-GHS_TTL=21600
+GHS_TTL=3600
 GHS_ASSET="kedistat-install.sh"
 ghget() { curl -fsSL -m 6 -A "kedistat" "$1" 2>/dev/null; }
 ghs_out() { # epoch yıldız indirme release depo stale(true|false) json(0|1)
@@ -1325,7 +1325,7 @@ return view.extend({
 			btnI.style.display = 'none'; say('Güncelsin (v' + j.cur + ')', 'ks-good');
 			icon('ok');
 		};
-		const chk = () => { btnC.disabled = true; say('Denetleniyor…', ''); return fs.exec(CLI, ['update', 'check', '--json']).then(r => { let j = null; try { j = JSON.parse(r.stdout || 'null'); } catch (e) {} show(j || { ok: false }); }).catch(() => show({ ok: false })).then(() => { btnC.disabled = false; }); };
+		const chk = () => { btnC.disabled = true; say('Denetleniyor…', ''); if (this.repoStatsLoad) this.repoStatsLoad(true); return fs.exec(CLI, ['update', 'check', '--json']).then(r => { let j = null; try { j = JSON.parse(r.stdout || 'null'); } catch (e) {} show(j || { ok: false }); }).catch(() => show({ ok: false })).then(() => { btnC.disabled = false; }); };
 		const inst = () => {
 			btnI.disabled = btnC.disabled = true; say('Güncelleme indiriliyor ve kuruluyor…', '');
 			fs.exec(CLI, ['update', 'bg']).then(() => {
@@ -1363,7 +1363,7 @@ return view.extend({
 		const st = tile('★', '#e3b341', 'yıldız', REPO + '/stargazers');
 		const dl = tile('⬇', '#3b82f6', 'indirme', REPO + '/releases');
 		const none = why => { st.num.textContent = dl.num.textContent = '—'; st.a.title = dl.a.title = why; };
-		fs.exec(CLI, ['repostats', '--json']).then(r => {
+		const load = refresh => fs.exec(CLI, refresh ? ['repostats', '--json', 'refresh'] : ['repostats', '--json']).then(r => {
 			let j = null; try { j = JSON.parse((r.stdout || '').trim()); } catch (e) {}
 			if (!j || !j.ok) return none("GitHub'a ulaşılamadı");
 			const d = new Date(j.ts * 1000), p = n => String(n).padStart(2, '0');
@@ -1374,6 +1374,8 @@ return view.extend({
 			dl.num.textContent = j.releases ? j.downloads : '—';
 			dl.a.title = (j.releases ? "GitHub Releases'teki kurulum dosyasının (kedistat-install.sh) indirme sayısı. " : 'Depoda henüz GitHub Release yok; indirme sayısı Release dosyalarından okunur. ') + tip;
 		}).catch(() => none('Panel yanıt vermedi'));
+		this.repoStatsLoad = load;   // "Güncellemeyi denetle" sayıları da tazeler
+		load(false);
 		return h('div', { 'class': 'ks-upd' }, [
 			h('div', { 'class': 'ks-upd-h' }, [h('b', {}, '📊 İstatistikler'), h('span', { 'style': 'opacity:.6;font-size:.85em' }, 'GitHub')]),
 			h('div', { 'class': 'ks-gh' }, [st.a, dl.a])

@@ -156,7 +156,7 @@ cmd_update() { # check [--json] | install | bg | status | cached | auto | auto-s
 # Yıldız sayısı ve Release'teki kurulum dosyasının (kedistat-install.sh) indirme sayısı. Anahtarsız GitHub API (saatte 60 istek/IP).
 # Sonuç RAM'de 6 saat saklanır; GitHub'a ulaşılamazsa son değer "stale" olarak döner.
 GHS_CACHE=/tmp/kedistat.ghstats    # "epoch|yıldız|indirme|release sayısı|depo"
-GHS_TTL=21600
+GHS_TTL=3600
 GHS_ASSET="kedistat-install.sh"
 ghget() { curl -fsSL -m 6 -A "kedistat" "$1" 2>/dev/null; }
 ghs_out() { # epoch yıldız indirme release depo stale(true|false) json(0|1)
