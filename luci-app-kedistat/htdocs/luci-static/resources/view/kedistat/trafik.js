@@ -649,7 +649,7 @@ return view.extend({
 		const auto = h('input', { 'type': 'checkbox' });
 		/* durum yazısının soluna yuvarlak içinde simge: ✓ (güncel) ya da ⓘ (güncelleme var) */
 		const icon = k => st.insertAdjacentHTML('afterbegin', '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-4px;margin-right:6px"><circle cx="12" cy="12" r="10"/>'
-			+ (k === 'ok' ? '<path d="M7.5 12.5l3 3 6-6.5"/>' : '<path d="M12 11v5.5"/><circle cx="12" cy="7.8" r="0.6" fill="currentColor"/>') + '</svg>');
+			+ (k === 'ok' ? '<path d="M7.5 12.5l3 3 6-6.5"/>' : '<path d="M12 11v6"/><circle cx="12" cy="7.4" r="1.3" fill="currentColor" stroke="none"/>') + '</svg>');
 		const show = j => {
 			if (!j) return say('Henüz denetlenmedi', '');
 			if (j.cur) vr.textContent = 'Kurulu: v' + j.cur;
