@@ -4,7 +4,7 @@
 
 # KediStat
 
-OpenWrt modemler için sade trafik izleyici (netstat mantığı): modemin toplam indirme/yükleme sayacı + cihaz başına indirme/yükleme. VPN/Direkt ayrımı yoktur.
+OpenWrt modemler için sade trafik izleyici: modemin toplam indirme/yükleme sayacı + cihaz başına indirme/yükleme.
 
 ## Kurulum
 
