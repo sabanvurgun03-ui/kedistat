@@ -180,6 +180,24 @@ const CSS = `
 .krl-pgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}
 .krl-pgrid>.krl-tile:last-child:nth-child(odd){grid-column:1/-1}
 .krl-dgrid{grid-template-columns:repeat(auto-fill,minmax(215px,1fr))}
+.krl-dn{display:flex;flex-wrap:wrap;align-items:center;gap:14px 22px;margin:0 0 14px;padding:12px 14px;border-radius:12px;border:1px solid rgba(128,128,128,.25);background:rgba(128,128,128,.04)}
+.krl-dn-c{--dn0:#2a78d6;--dn1:#eb6834;--dn2:#1baf7a;--dn3:#eda100;--dn4:#e87ba4;--dn5:#898781}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]):not([data-krt="light"]) .krl-dn-c{--dn0:#3987e5;--dn1:#d95926;--dn2:#199e70;--dn3:#c98500;--dn4:#d55181}}
+:root[data-theme="dark"] .krl-dn-c,:root[data-darkmode="true"] .krl-dn-c,:root[data-krt="dark"] .krl-dn-c{--dn0:#3987e5;--dn1:#d95926;--dn2:#199e70;--dn3:#c98500;--dn4:#d55181}
+.krl-dn svg{width:150px;height:150px;flex:none;display:block}
+.krl-dn-seg{fill:none;stroke-width:20;cursor:pointer;transition:stroke-width .15s ease,opacity .15s ease}
+.krl-dn-seg.dn-h{stroke-width:24}
+.krl-dn-c.dn-any .krl-dn-seg:not(.dn-h){opacity:.45}
+.krl-dn-t1,.krl-dn-t2{pointer-events:none}
+.krl-dn-t1{font:600 15px system-ui,sans-serif;fill:currentColor;text-anchor:middle;font-variant-numeric:tabular-nums}
+.krl-dn-t2{font:11px system-ui,sans-serif;fill:currentColor;opacity:.7;text-anchor:middle}
+.krl-dn-lg{flex:1 1 180px;min-width:170px;display:flex;flex-direction:column;gap:4px;font-variant-numeric:tabular-nums}
+.krl-dn-row{display:flex;align-items:center;gap:8px;padding:3px 6px;border-radius:8px;cursor:default}
+.krl-dn-row.dn-h{background:rgba(128,128,128,.14)}
+.krl-dn-sw{width:11px;height:11px;border-radius:3px;flex:none}
+.krl-dn-n{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.krl-dn-v{opacity:.75;font-size:.92em;white-space:nowrap}
+.krl-dn-p{min-width:38px;text-align:right;font-weight:600}
 .krl-dev{--c:var(--krl-g);align-items:stretch;justify-content:flex-start;text-align:left;padding:9px 11px 8px}
 .krl-dev .krl-spark{position:static;height:26px;margin:5px 0 2px}
 .krl-dname{font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -248,6 +266,57 @@ const CSS = `
 .krl-info .krl-val{font-size:1.02em;font-weight:700}
 .krl-sdown .krl-val,.krl-sup .krl-val{margin-top:4px}
 `;
+
+/* Cihaz payı halkası: bugünkü toplam içinde en çok kullanan 5 cihaz + "Diğer". Renk cihaza bağlıdır (IP sırasına göre sabit yuva), sıralamaya değil.
+   Dilime gelince / dokununca ortada cihaz adı ve miktarı görünür; yanındaki liste aynı bilgiyi yazıyla verir. */
+function devDonut(list, othersBytes, maskIp) {
+	const rows = list.map(x => ({ name: x.dv.name || maskIp(x.dv.ip), ip: x.dv.ip, b: x.dv.today.rx + x.dv.today.tx })).filter(r => r.b > 0);
+	rows.sort((a, b) => b.b - a.b);
+	const top = rows.slice(0, 5);
+	const rest = rows.slice(5).reduce((s, r) => s + r.b, 0) + (othersBytes || 0);
+	const byIp = top.slice().sort((a, b) => a.ip < b.ip ? -1 : (a.ip > b.ip ? 1 : 0));
+	byIp.forEach((r, i) => { r.slot = i; });
+	const segs = top.slice();
+	if (rest > 0) segs.push({ name: 'Diğer', b: rest, slot: 5, other: true });
+	const total = segs.reduce((s, r) => s + r.b, 0);
+	if (total <= 0) return '';
+	const R = 44, C = 2 * Math.PI * R, GAP = segs.length > 1 ? 2 : 0;
+	const NS = 'http://www.w3.org/2000/svg';
+	const svg = document.createElementNS(NS, 'svg');
+	svg.setAttribute('viewBox', '0 0 120 120'); svg.setAttribute('role', 'img');
+	svg.setAttribute('aria-label', 'Bugünkü veri kullanımının cihazlara dağılımı');
+	const mk = (tag, attrs) => { const e = document.createElementNS(NS, tag); Object.keys(attrs).forEach(k => e.setAttribute(k, attrs[k])); return e; };
+	const t1 = mk('text', { 'class': 'krl-dn-t1', x: 60, y: 60 }), t2 = mk('text', { 'class': 'krl-dn-t2', x: 60, y: 76 });
+	const wrap = h('div', { 'class': 'krl-dn krl-dn-c' });
+	const legend = h('div', { 'class': 'krl-dn-lg' });
+	const segEls = [], rowEls = [];
+	const idle = () => { t1.textContent = fmtBytes(total); t2.textContent = 'bugün'; };
+	const on = i => {
+		const r = segs[i];
+		t1.textContent = fmtBytes(r.b); t2.textContent = (r.name.length > 14 ? r.name.slice(0, 13) + '…' : r.name);
+		segEls.forEach((e, j) => e.classList.toggle('dn-h', j === i)); rowEls.forEach((e, j) => e.classList.toggle('dn-h', j === i));
+		wrap.classList.add('dn-any');
+	};
+	const off = () => { idle(); segEls.forEach(e => e.classList.remove('dn-h')); rowEls.forEach(e => e.classList.remove('dn-h')); wrap.classList.remove('dn-any'); };
+	let acc = 0;
+	segs.forEach((r, i) => {
+		const len = r.b / total * C, pct = Math.round(r.b / total * 100);
+		const c = mk('circle', { 'class': 'krl-dn-seg', cx: 60, cy: 60, r: R, 'stroke-dasharray': Math.max(0.5, len - GAP).toFixed(2) + ' ' + C.toFixed(2),
+			'stroke-dashoffset': (-acc).toFixed(2), transform: 'rotate(-90 60 60)', style: 'stroke:var(--dn' + r.slot + ')' });
+		c.setAttribute('tabindex', '0'); c.setAttribute('aria-label', r.name + ': ' + fmtBytes(r.b) + ', %' + pct);
+		c.addEventListener('pointerenter', () => on(i)); c.addEventListener('pointerleave', off);
+		c.addEventListener('click', () => on(i)); c.addEventListener('focus', () => on(i)); c.addEventListener('blur', off);
+		svg.appendChild(c); segEls.push(c); acc += len;
+		const row = h('div', { 'class': 'krl-dn-row' }, [
+			h('span', { 'class': 'krl-dn-sw', 'style': 'background:var(--dn' + r.slot + ')' }), h('span', { 'class': 'krl-dn-n', 'title': r.name }, r.name),
+			h('span', { 'class': 'krl-dn-v' }, fmtBytes(r.b)), h('span', { 'class': 'krl-dn-p' }, '%' + pct)]);
+		row.addEventListener('pointerenter', () => on(i)); row.addEventListener('pointerleave', off);
+		legend.appendChild(row); rowEls.push(row);
+	});
+	svg.appendChild(t1); svg.appendChild(t2); idle();
+	wrap.appendChild(svg); wrap.appendChild(legend);
+	return wrap;
+}
 
 return view.extend({
 	/* Kart: başlığa tıklayınca içerik katlanır (tercih tarayıcıda saklanır) */
@@ -842,6 +911,7 @@ return view.extend({
 			]);
 		});
 		dom.content(this.elDevTr, [
+			devDonut(list, others && others.n ? others.today.rx + others.today.tx : 0, maskIp),
 			h('div', { 'class': 'krl-band krl-dgrid kr-traffic' }, cards),
 			h('div', { 'class': 'kr-sub', 'style': 'margin-top:6px' }, '↓ cihaza gelen (indirme), ↑ cihazdan giden (yükleme). Çubuk, cihazın bugünkü payı. Sayaçlar modem yeniden başlasa da saklanır. Yalnızca IPv4 trafiği sayılır; donanım hızlandırma (NSS/flow offload) açıksa bazı akışlar eksik görünebilir.')
 		]);
