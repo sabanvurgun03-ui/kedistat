@@ -1244,14 +1244,17 @@ return view.extend({
 		const btnI = h('button', { 'class': 'cbi-button cbi-button-action', 'style': 'display:none' }, 'Şimdi güncelle');
 		const btnC = h('button', { 'class': 'cbi-button' }, 'Güncellemeyi denetle');
 		const auto = h('input', { 'type': 'checkbox' });
+		/* durum yazısının soluna yuvarlak içinde simge: ✓ (güncel) ya da ⓘ (güncelleme var) */
+		const icon = k => st.insertAdjacentHTML('afterbegin', '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-4px;margin-right:6px"><circle cx="12" cy="12" r="10"/>'
+			+ (k === 'ok' ? '<path d="M7.5 12.5l3 3 6-6.5"/>' : '<path d="M12 11v5.5"/><circle cx="12" cy="7.8" r="0.6" fill="currentColor"/>') + '</svg>');
 		const show = j => {
 			if (!j) return say('Henüz denetlenmedi', '');
 			if (j.cur) vr.textContent = 'Kurulu: v' + j.cur;
 			if (!j.ok) { btnI.style.display = 'none'; return say("GitHub'a ulaşılamadı", 'ks-bad'); }
-			if (j.newer) { btnI.style.display = ''; return say('Yeni sürüm var: v' + j.cur + ' → v' + j.latest, 'ks-new'); }
-			if (j.rev_new) { btnI.style.display = ''; return say('Aynı sürümde (v' + j.cur + ') depoda yeni değişiklikler var', 'ks-new'); }
+			if (j.newer) { btnI.style.display = ''; say('Yeni sürüm var: v' + j.cur + ' → v' + j.latest, 'ks-new'); return icon('new'); }
+			if (j.rev_new) { btnI.style.display = ''; say('Aynı sürümde (v' + j.cur + ') depoda yeni değişiklikler var', 'ks-new'); return icon('new'); }
 			btnI.style.display = 'none'; say('Güncelsin (v' + j.cur + ')', 'ks-good');
-			st.insertAdjacentHTML('afterbegin', '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-4px;margin-right:6px"><circle cx="12" cy="12" r="10"/><path d="M7.5 12.5l3 3 6-6.5"/></svg>');
+			icon('ok');
 		};
 		const chk = () => { btnC.disabled = true; say('Denetleniyor…', ''); return fs.exec(CLI, ['update', 'check', '--json']).then(r => { let j = null; try { j = JSON.parse(r.stdout || 'null'); } catch (e) {} show(j || { ok: false }); }).catch(() => show({ ok: false })).then(() => { btnC.disabled = false; }); };
 		const inst = () => {
