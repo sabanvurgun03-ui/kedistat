@@ -1,0 +1,11 @@
+{
+	"luci-app-kedistat": {
+		"description": "KediStat trafik izleyici",
+		"read": {
+			"file": {
+				"/usr/bin/kedistat": [ "exec" ],
+				"/usr/bin/kedistat *": [ "exec" ]
+			}
+		}
+	}
+}

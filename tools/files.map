@@ -1,0 +1,8 @@
+# Kurulum betiğinin (kedistat-install.sh) yazdığı dosyalar. kaynak (depoda)<TAB>modemdeki yol<TAB>mod
+package/kedistat/files/usr/bin/kedistat	/usr/bin/kedistat	755
+package/kedistat/files/etc/init.d/kedistat	/etc/init.d/kedistat	755
+package/kedistat/files/usr/share/kedistat/traffic.uc	/usr/share/kedistat/traffic.uc	644
+luci-app-kedistat/htdocs/luci-static/resources/view/kedistat/trafik.js	/www/luci-static/resources/view/kedistat/trafik.js	644
+luci-app-kedistat/htdocs/luci-static/kedistat-logo.svg	/www/luci-static/kedistat-logo.svg	644
+luci-app-kedistat/root/usr/share/luci/menu.d/luci-app-kedistat.json	/usr/share/luci/menu.d/luci-app-kedistat.json	644
+luci-app-kedistat/root/usr/share/rpcd/acl.d/luci-app-kedistat.json	/usr/share/rpcd/acl.d/luci-app-kedistat.json	644

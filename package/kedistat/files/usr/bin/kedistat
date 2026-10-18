@@ -1,0 +1,128 @@
+#!/bin/sh
+# KediStat — OpenWrt modem için trafik izleyici (toplam + cihaz başına). Geliştirici: Şaban Vurgun · 2026
+# Kullanım: kedistat stats | sample [save] | save | restore | reset | version | update [check] | uninstall
+SHARE=/usr/share/kedistat
+RUN=/var/etc/kedistat
+REPO_DEF="sabanvurgun03-ui/kedistat"
+NFT_TABLE=kedistat_acct
+
+command -v ucode >/dev/null 2>&1 || { echo "ucode bulunamadı (OpenWrt 21.02+ gerekir)" >&2; exit 1; }
+[ -f /etc/TZ ] && { TZ=$(cat /etc/TZ); export TZ; }
+export KS_RUN="$RUN"
+
+# LAN arayüzleri: ağ yapılandırmasındaki "lan" arayüzünün cihazı (yoksa br-lan)
+lan_ifs() {
+	local dev=""
+	[ -f /lib/functions/network.sh ] && {
+		. /lib/functions/network.sh
+		network_get_device dev lan 2>/dev/null
+	}
+	echo "${dev:-br-lan}"
+}
+# WAN arayüzü (varsayılan rotanın çıkışı)
+wan_dev() {
+	local net="" dev="" f="$RUN/wan_dev"
+	[ -s "$f" ] && [ -d "/sys/class/net/$(cat "$f")" ] && { cat "$f"; return 0; }
+	if [ -f /lib/functions/network.sh ]; then
+		. /lib/functions/network.sh
+		network_flush_cache 2>/dev/null
+		network_find_wan net 2>/dev/null && network_get_device dev "$net" 2>/dev/null
+	fi
+	[ -n "$dev" ] || dev=$(ip -4 route show default 2>/dev/null | awk '{ for (i = 1; i < NF; i++) if ($i == "dev") { print $(i + 1); exit } }')
+	[ -n "$dev" ] && { mkdir -p "$RUN"; echo "$dev" > "$f"; }
+	echo "$dev"
+}
+
+# ---------- cihaz bazlı trafik ----------
+# Ayrı bir nft tablosu (inet kedistat_acct): up = cihazdan gelen (yükleme, prerouting), dn = cihaza giden (indirme, postrouting).
+dev_ips() { # LAN'daki cihazların IPv4 adresleri (DHCP kiraları + komşu tablosu)
+	local d
+	{
+		awk 'NF >= 4 { print $3 }' /tmp/dhcp.leases 2>/dev/null
+		for d in $(lan_ifs); do
+			ip -4 neigh show dev "$d" 2>/dev/null | awk '$1 ~ /^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$/ && $0 !~ /FAILED|INCOMPLETE/ { print $1 }'
+		done
+	} | awk '!s[$0]++ && $0 ~ /^(10\.|192\.168\.|172\.(1[6-9]|2[0-9]|3[01])\.)/' | head -n 128
+}
+dev_acct_sync() {
+	local lanset i ip up dn
+	command -v nft >/dev/null 2>&1 || return 0
+	lanset=$(for i in $(lan_ifs); do printf '"%s",' "$i"; done | sed 's/,$//')
+	nft list table inet $NFT_TABLE >/dev/null 2>&1 || nft -f - <<NFT 2>/dev/null
+table inet $NFT_TABLE {
+	chain up { type filter hook prerouting priority raw; policy accept; }
+	chain dn { type filter hook postrouting priority 100; policy accept; }
+}
+NFT
+	up=$(nft list chain inet $NFT_TABLE up 2>/dev/null)
+	dn=$(nft list chain inet $NFT_TABLE dn 2>/dev/null)
+	for ip in $(dev_ips); do
+		echo "$up" | grep -q "saddr $ip counter" || nft add rule inet $NFT_TABLE up iifname "{ $lanset }" ip saddr "$ip" counter 2>/dev/null
+		echo "$dn" | grep -q "daddr $ip counter" || nft add rule inet $NFT_TABLE dn oifname "{ $lanset }" ip daddr "$ip" counter 2>/dev/null
+	done
+	return 0
+}
+dev_read() { # "ip<TAB>rx|tx<TAB>bayt" (rx = cihaza gelen/indirme, tx = cihazdan giden/yükleme)
+	nft list chain inet $NFT_TABLE up 2>/dev/null | awk '/saddr/ && /bytes/ { ip = ""; b = ""; for (i = 1; i <= NF; i++) { if ($i == "saddr") ip = $(i + 1); if ($i == "bytes") b = $(i + 1) } if (ip != "" && b != "") print ip "\ttx\t" b }'
+	nft list chain inet $NFT_TABLE dn 2>/dev/null | awk '/daddr/ && /bytes/ { ip = ""; b = ""; for (i = 1; i <= NF; i++) { if ($i == "daddr") ip = $(i + 1); if ($i == "bytes") b = $(i + 1) } if (ip != "" && b != "") print ip "\trx\t" b }'
+}
+traffic_env() { # sayaçları ortam değişkeni olarak ver
+	local dev
+	dev=$(wan_dev)
+	mkdir -p "$RUN"; dev_read > "$RUN/dev.cur" 2>/dev/null
+	export KS_DEVF="$RUN/dev.cur"
+	KS_WR=$(cat "/sys/class/net/$dev/statistics/rx_bytes" 2>/dev/null); KS_WT=$(cat "/sys/class/net/$dev/statistics/tx_bytes" 2>/dev/null)
+	# okunamayan sayaç boş kalır (0 değil): traffic.uc son bilinen değeri taşır, çift sayım olmaz
+	export KS_WR KS_WT
+}
+traffic_sample() { # [save]
+	( dev_acct_sync; traffic_env; ucode "$SHARE/traffic.uc" sample "$@" >/dev/null 2>&1 )
+}
+cmd_stats() { ( traffic_env; ucode "$SHARE/traffic.uc" report ); }
+
+ks_version() { cat "$SHARE/version" 2>/dev/null || echo "?"; }
+
+# ---------- güncelleme: GitHub'daki son kurulum betiğini indirip çalıştırır ----------
+ufetch() { # <url> <hedef> [zaman aşımı]
+	local u="$1" o="$2" t="${3:-20}"
+	if command -v curl >/dev/null 2>&1; then curl -fsSL -m "$t" -o "$o" "$u" 2>/dev/null && [ -s "$o" ] && return 0; fi
+	command -v wget >/dev/null 2>&1 && wget -q -T "$t" -O "$o" "$u" 2>/dev/null && [ -s "$o" ]
+}
+cmd_update() { # check | (boş: kur)
+	local base="https://raw.githubusercontent.com/${KS_REPO:-$REPO_DEF}/main" t="/tmp/kedistat-update.$$" cur latest
+	cur=$(ks_version)
+	ufetch "$base/VERSION?t=$(date +%s)" "$t.v" 10 || { echo "GitHub'a ulaşılamadı: $base"; rm -f "$t.v"; return 1; }
+	latest=$(tr -cd '0-9.' < "$t.v" | head -c 20); rm -f "$t.v"
+	[ -n "$latest" ] || { echo "VERSION okunamadı"; return 1; }
+	if [ "$1" = check ]; then
+		[ "$latest" = "$cur" ] && echo "Güncelsin ($cur)" || echo "Yeni sürüm var: $cur -> $latest"
+		return 0
+	fi
+	ufetch "$base/kedistat-install.sh?t=$(date +%s)" "$t.sh" 40 || { echo "Kurulum dosyası indirilemedi."; rm -f "$t.sh"; return 1; }
+	head -c 400 "$t.sh" | grep -q 'KediStat' || { echo "İndirilen dosya KediStat kurulum dosyası gibi görünmüyor."; rm -f "$t.sh"; return 1; }
+	sh "$t.sh"; local rc=$?
+	rm -f "$t.sh"
+	return $rc
+}
+
+cmd_uninstall() {
+	/etc/init.d/kedistat stop >/dev/null 2>&1; /etc/init.d/kedistat disable >/dev/null 2>&1
+	nft delete table inet $NFT_TABLE 2>/dev/null
+	sed -i '/kedistat sample/d' /etc/crontabs/root 2>/dev/null
+	/etc/init.d/cron restart >/dev/null 2>&1
+	rm -rf /usr/bin/kedistat /usr/share/kedistat /etc/init.d/kedistat /www/luci-static/resources/view/kedistat \
+		/usr/share/luci/menu.d/luci-app-kedistat.json /usr/share/rpcd/acl.d/luci-app-kedistat.json "$RUN"
+	rm -f /tmp/luci-indexcache* ; rm -rf /tmp/luci-modulecache 2>/dev/null
+	/etc/init.d/rpcd reload >/dev/null 2>&1
+	echo "KediStat kaldırıldı. Saklanan trafik verisi (/etc/kedistat.traffic.json) silinmedi; istersen elle sil."
+}
+
+case "$1" in
+	stats|"") cmd_stats ;;
+	sample) traffic_sample "$2" ;;
+	save|restore|reset) ucode "$SHARE/traffic.uc" "$1" ;;
+	version) echo "KediStat $(ks_version)" ;;
+	update) cmd_update "$2" ;;
+	uninstall) cmd_uninstall ;;
+	*) echo "kullanım: kedistat stats | sample [save] | save | restore | reset | version | update [check] | uninstall" >&2; exit 1 ;;
+esac

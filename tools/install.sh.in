@@ -1,0 +1,39 @@
+#!/bin/sh
+# KediStat @@VERSION@@ — OpenWrt modem için trafik izleyici (toplam + cihaz başına). Tek dosya kurulum betiği.
+# Kurulum:  wget -qO- https://raw.githubusercontent.com/@@REPO@@/main/kedistat-install.sh | sh
+# Kaldırma: kedistat uninstall
+KS_VERSION="@@VERSION@@"
+KS_REPO="@@REPO@@"
+
+say() { printf '%s\n' "$*"; }
+ok() { printf '  ✔ %s\n' "$*"; }
+die() { printf '  ✘ %s\n' "$*" >&2; exit 1; }
+
+say "==> KediStat $KS_VERSION kuruluyor"
+[ "$(id -u 2>/dev/null)" = 0 ] || die "root olarak çalıştır"
+[ -f /etc/openwrt_release ] || die "Bu betik OpenWrt içindir"
+command -v ucode >/dev/null 2>&1 || die "ucode bulunamadı (OpenWrt 21.02 ya da yenisi gerekir)"
+command -v nft >/dev/null 2>&1 || die "nft bulunamadı (OpenWrt 22.03+ / fw4 gerekir)"
+[ -d /usr/share/luci ] || say "  ! LuCI bulunamadı: arayüz sayfası görünmez, ama 'kedistat stats' komutu çalışır"
+ok "ortam uygun"
+
+@@FILES@@
+
+touch /etc/crontabs/root
+sed -i '/kedistat sample/d' /etc/crontabs/root
+echo '* * * * * /usr/bin/kedistat sample >/dev/null 2>&1' >> /etc/crontabs/root
+/etc/init.d/cron enable >/dev/null 2>&1; /etc/init.d/cron restart >/dev/null 2>&1
+ok "sayaç örnekleme (dakikada bir) ayarlandı"
+
+mkdir -p /usr/share/kedistat
+echo "$KS_VERSION" > /usr/share/kedistat/version
+/etc/init.d/kedistat enable >/dev/null 2>&1
+/etc/init.d/kedistat start >/dev/null 2>&1
+/usr/bin/kedistat sample >/dev/null 2>&1
+ok "servis etkinleştirildi, sayaçlar başlatıldı"
+
+# LuCI menüsü ve yetki dosyası yenilensin
+rm -f /tmp/luci-indexcache* 2>/dev/null; rm -rf /tmp/luci-modulecache 2>/dev/null
+/etc/init.d/rpcd reload >/dev/null 2>&1
+ok "LuCI menüsü: Durum → KediStat Trafik (görmezsen LuCI'den çıkıp tekrar gir)"
+say "==> Tamam. Veriler 1-2 dakika içinde dolar. Güncellemek için: kedistat update · Kaldırmak için: kedistat uninstall"

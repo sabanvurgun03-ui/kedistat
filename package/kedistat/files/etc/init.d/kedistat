@@ -1,0 +1,13 @@
+#!/bin/sh /etc/rc.common
+# KediStat: açılışta kayıtlı trafik verisini geri yükler ve sayaçları kurar; kapanışta kaydeder.
+START=99
+STOP=10
+PROG=/usr/bin/kedistat
+
+start() {
+	$PROG restore >/dev/null 2>&1
+	( sleep 20; $PROG sample >/dev/null 2>&1 ) </dev/null >/dev/null 2>&1 &
+}
+stop() {
+	$PROG sample save >/dev/null 2>&1
+}
