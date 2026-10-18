@@ -28,7 +28,9 @@ ok "menü yeri: $MNAME → KediStat Trafik"
 
 touch /etc/crontabs/root
 sed -i '/kedistat sample/d' /etc/crontabs/root
+sed -i '/kedistat update auto/d' /etc/crontabs/root
 echo '* * * * * /usr/bin/kedistat sample >/dev/null 2>&1' >> /etc/crontabs/root
+echo "$(( $(date +%S) % 50 + 3 )) 4 * * * /usr/bin/kedistat update auto >/dev/null 2>&1" >> /etc/crontabs/root
 /etc/init.d/cron enable >/dev/null 2>&1; /etc/init.d/cron restart >/dev/null 2>&1
 ok "sayaç örnekleme (dakikada bir) ayarlandı"
 
@@ -41,6 +43,7 @@ echo "$KS_VERSION" > /usr/share/kedistat/version
 if [ -s /etc/kediray.traffic.json ] || [ -s /var/etc/kediray/traffic.json ]; then
 	R=$(/usr/bin/kedistat import 2>/dev/null) && ok "KediRay geçmişi: $R"
 fi
+/usr/bin/kedistat update rev >/dev/null 2>&1
 ok "servis etkinleştirildi, sayaçlar başlatıldı"
 
 # LuCI menüsü ve yetki dosyası yenilensin

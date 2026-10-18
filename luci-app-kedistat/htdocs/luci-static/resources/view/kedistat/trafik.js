@@ -215,6 +215,15 @@ const CSS = `
 .krl-ns .krl-val{margin-top:4px}
 .krl-info{grid-column:1/-1;min-height:0;flex-direction:row;justify-content:center;align-items:baseline;gap:10px;padding:7px 10px}
 .krl-info .krl-lbl{border-top:0;padding-top:0;margin:0;width:auto}
+.ks-upd{margin:18px 0 0;padding:12px 14px;border-radius:12px;border:1px solid rgba(128,128,128,.28);background:linear-gradient(160deg,rgba(128,128,128,.10),rgba(128,128,128,.02))}
+.ks-upd-h{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px}
+.ks-upd-h b{font-size:1.02em}
+.ks-upd-st{margin:6px 0 8px;opacity:.85;font-size:.92em}
+.ks-upd-st.ks-new{color:#e0a82e;opacity:1;font-weight:600}
+.ks-upd-st.ks-bad{color:#e5534b;opacity:1}
+.ks-upd-st.ks-good{color:#3fb950;opacity:1}
+.ks-upd-btn{display:flex;flex-wrap:wrap;align-items:center;gap:10px}
+.ks-upd-auto{display:inline-flex;align-items:center;gap:6px;font-size:.88em;opacity:.85;cursor:pointer}
 .ks-sup{margin:18px 0 6px;padding:14px 16px;border-radius:12px;border:1px solid rgba(255,221,0,.35);background:linear-gradient(160deg,rgba(255,221,0,.10),rgba(255,221,0,.02));display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px}
 .ks-sup b{display:block;font-size:1.02em;margin-bottom:2px}
 .ks-sup span{opacity:.75;font-size:.9em}
@@ -452,6 +461,49 @@ return view.extend({
 			h('div', { 'class': 'krl-tile krl-info krl-ns' }, [h('div', { 'class': 'krl-val', 'style': 'color:inherit' }, lb.up), h('div', { 'class': 'krl-lbl' }, 'Modem açık')])
 		]);
 	},
+	/* GitHub'dan güncelleme: denetle / şimdi güncelle / otomatik kur */
+	buildUpdate() {
+		const st = h('div', { 'class': 'ks-upd-st' }, 'Denetleniyor…');
+		const vr = h('span', { 'style': 'opacity:.7;font-size:.88em' }, '');
+		const say = (t, c) => { st.className = 'ks-upd-st ' + (c || ''); st.textContent = t; };
+		const btnI = h('button', { 'class': 'cbi-button cbi-button-action', 'style': 'display:none' }, 'Şimdi güncelle');
+		const btnC = h('button', { 'class': 'cbi-button' }, 'Güncellemeyi denetle');
+		const auto = h('input', { 'type': 'checkbox' });
+		const show = j => {
+			if (!j) return say('Henüz denetlenmedi', '');
+			if (j.cur) vr.textContent = 'Kurulu: v' + j.cur;
+			if (!j.ok) { btnI.style.display = 'none'; return say("GitHub'a ulaşılamadı", 'ks-bad'); }
+			if (j.newer) { btnI.style.display = ''; return say('Yeni sürüm var: v' + j.cur + ' → v' + j.latest, 'ks-new'); }
+			if (j.rev_new) { btnI.style.display = ''; return say('Aynı sürümde (v' + j.cur + ') depoda yeni değişiklikler var', 'ks-new'); }
+			btnI.style.display = 'none'; say('Güncelsin (v' + j.cur + ')', 'ks-good');
+		};
+		const chk = () => { btnC.disabled = true; say('Denetleniyor…', ''); return fs.exec(CLI, ['update', 'check', '--json']).then(r => { let j = null; try { j = JSON.parse(r.stdout || 'null'); } catch (e) {} show(j || { ok: false }); }).catch(() => show({ ok: false })).then(() => { btnC.disabled = false; }); };
+		const inst = () => {
+			btnI.disabled = btnC.disabled = true; say('Güncelleme indiriliyor ve kuruluyor…', '');
+			fs.exec(CLI, ['update', 'bg']).then(() => {
+				let n = 0;
+				const tm = setInterval(() => {
+					fs.exec(CLI, ['update', 'status']).then(r => {
+						const o = r.stdout || '', m = o.match(/__BITTI__ (\d+)/);
+						if (!m) { if (++n > 90) { clearInterval(tm); say('Zaman aşımı; sayfayı yenileyip tekrar dene', 'ks-bad'); btnC.disabled = btnI.disabled = false; } return; }
+						clearInterval(tm);
+						if (m[1] === '0') { say('Güncellendi, sayfa yenileniyor…', 'ks-good'); setTimeout(() => location.reload(true), 1200); }
+						else { say('Güncelleme başarısız: ' + (o.trim().split('\n').slice(-2, -1)[0] || 'bilinmeyen hata'), 'ks-bad'); btnC.disabled = btnI.disabled = false; }
+					}).catch(() => {});
+				}, 2000);
+			}).catch(() => { say('Güncelleme başlatılamadı', 'ks-bad'); btnC.disabled = btnI.disabled = false; });
+		};
+		btnC.addEventListener('click', chk); btnI.addEventListener('click', inst);
+		auto.addEventListener('change', () => { fs.exec(CLI, ['update', 'auto-set', auto.checked ? '1' : '0']).catch(() => {}); });
+		fs.exec(CLI, ['update', 'auto-get']).then(r => { auto.checked = (r.stdout || '').trim() === '1'; }).catch(() => {});
+		fs.exec(CLI, ['update', 'cached']).then(r => { let j = null; try { j = JSON.parse(r.stdout || 'null'); } catch (e) {} if (j) show(j); else { fs.exec(CLI, ['version']).then(v => { vr.textContent = 'Kurulu: ' + ((v.stdout || '').trim().replace(/^KediStat /, 'v')); }).catch(() => {}); say('Henüz denetlenmedi', ''); } }).catch(() => {});
+		return h('div', { 'class': 'ks-upd' }, [
+			h('div', { 'class': 'ks-upd-h' }, [h('b', {}, '⟳ Güncelleme (GitHub)'), vr]),
+			st,
+			h('div', { 'class': 'ks-upd-btn' }, [btnC, btnI, h('label', { 'class': 'ks-upd-auto' }, [auto, 'Yeni sürümü otomatik kur (günde bir denetlenir)'])])
+		]);
+	},
+
 	/* Hız birimi seçici: MB/s (bayt) ya da Mbps (bit). Seçim tarayıcıda saklanır. */
 	buildRateSeg() {
 		const btns = {};
@@ -649,6 +701,7 @@ return view.extend({
 			h('style', {}, CSS),
 			h('h2', {}, [h('img', { 'src': '/luci-static/kedistat-logo.svg', 'style': 'height:1.3em;vertical-align:-0.25em;margin-right:8px;border-radius:6px' }), 'KediStat — Trafik']),
 			this.elTraffic,
+			this.buildUpdate(),
 			h('div', { 'class': 'ks-sup' }, [
 				h('div', {}, [h('b', {}, '☕ Beğendin mi?'), h('span', {}, 'KediStat ücretsiz ve açık kaynak. Emeğe küçük bir destek çok değerli.')]),
 				h('a', { 'class': 'ks-coffee', 'href': 'https://buymeacoffee.com/sabanvurgun', 'target': '_blank', 'rel': 'noopener noreferrer' }, '☕ Bana bir kahve ısmarla')

@@ -18,10 +18,10 @@ command -v nft >/dev/null 2>&1 || die "nft bulunamadı (OpenWrt 22.03+ / fw4 ger
 ok "ortam uygun"
 
 mkdir -p "$(dirname /usr/bin/kedistat)"
-cat > /usr/bin/kedistat <<'KEDISTAT_EOF_1'
+cat > /usr/bin/kedistat.new <<'KEDISTAT_EOF_1'
 #!/bin/sh
 # KediStat — OpenWrt modem için trafik izleyici (toplam + cihaz başına). Geliştirici: Şaban Vurgun · 2026
-# Kullanım: kedistat stats | sample [save] | save | restore | reset | import | version | update [check] | uninstall
+# Kullanım: kedistat stats | sample [save] | save | restore | reset | import | version | update [check|bg|auto-set 0/1] | uninstall
 SHARE=/usr/share/kedistat
 RUN=/var/etc/kedistat
 REPO_DEF="sabanvurgun03-ui/kedistat"
@@ -109,29 +109,75 @@ ufetch() { # <url> <hedef> [zaman aşımı]
 	if command -v curl >/dev/null 2>&1; then curl -fsSL -m "$t" -o "$o" "$u" 2>/dev/null && [ -s "$o" ] && return 0; fi
 	command -v wget >/dev/null 2>&1 && wget -q -T "$t" -O "$o" "$u" 2>/dev/null && [ -s "$o" ]
 }
-cmd_update() { # check | (boş: kur)
-	local base="https://raw.githubusercontent.com/${KS_REPO:-$REPO_DEF}/main" t="/tmp/kedistat-update.$$" cur latest
+UPD_REV=/usr/share/kedistat/rev      # kurulu kodun GitHub commit kimliği (sürüm aynı kalsa da küçük değişiklikler yakalanır)
+UPD_LAST=/tmp/kedistat.upd.json      # son denetimin sonucu (RAM)
+UPD_LOG=/tmp/kedistat-upd.log
+UPD_AUTO=/etc/kedistat.auto          # içinde 1 varsa yeni sürüm otomatik kurulur
+ks_sha() { # depodaki main dalının son commit kimliği (API; sınırlıysa atom akışı); olmazsa hata
+	local r="${KS_REPO:-$REPO_DEF}" out
+	out=$(curl -fsSL -m 8 -A "kedistat" -H 'Accept: application/vnd.github.sha' "https://api.github.com/repos/$r/commits/main" 2>/dev/null)
+	echo "$out" | grep -Eq '^[0-9a-f]{40}$' || out=$(curl -fsSL -m 8 -A "kedistat" "https://github.com/$r/commits/main.atom" 2>/dev/null | sed -n 's#.*Grit::Commit/\([0-9a-f]\{40\}\).*#\1#p' | head -1)
+	echo "$out" | grep -Eq '^[0-9a-f]{40}$' || return 1
+	echo "$out"
+}
+upd_check() { # <json|text>
+	local base="https://raw.githubusercontent.com/${KS_REPO:-$REPO_DEF}/main" t="/tmp/kedistat-update.$$" cur latest head inst fresh=false newer=false rn=false
 	cur=$(ks_version)
-	ufetch "$base/VERSION?t=$(date +%s)" "$t.v" 10 || { echo "GitHub'a ulaşılamadı: $base"; rm -f "$t.v"; return 1; }
-	latest=$(tr -cd '0-9.' < "$t.v" | head -c 20); rm -f "$t.v"
-	[ -n "$latest" ] || { echo "VERSION okunamadı"; return 1; }
-	if [ "$1" = check ]; then
-		[ "$latest" = "$cur" ] && echo "Güncelsin ($cur)" || echo "Yeni sürüm var: $cur -> $latest"
-		return 0
+	if ! ufetch "$base/VERSION?t=$(date +%s)" "$t.v" 10; then
+		rm -f "$t.v"
+		[ "$1" = json ] && echo '{"ok":false,"cur":"'"$cur"'"}' || echo "GitHub'a ulaşılamadı: $base"
+		return 1
 	fi
+	latest=$(tr -cd '0-9.' < "$t.v" | head -c 20); rm -f "$t.v"
+	[ -n "$latest" ] || { [ "$1" = json ] && echo '{"ok":false,"cur":"'"$cur"'"}' || echo "VERSION okunamadı"; return 1; }
+	head=$(ks_sha); inst=$(cat "$UPD_REV" 2>/dev/null)
+	[ "$latest" != "$cur" ] && newer=true
+	[ -n "$head" ] && [ -n "$inst" ] && [ "$head" != "$inst" ] && rn=true
+	{ [ $newer = true ] || [ $rn = true ]; } && fresh=true
+	if [ "$1" = json ]; then
+		printf '{"ok":true,"cur":"%s","latest":"%s","newer":%s,"rev_new":%s,"fresh":%s,"head":"%s","ts":%s}\n' "$cur" "$latest" $newer $rn $fresh "$(echo "$head" | cut -c1-7)" "$(date +%s)"
+	elif [ $newer = true ]; then echo "Yeni sürüm var: $cur -> $latest"
+	elif [ $rn = true ]; then echo "Aynı sürümde ($cur) depoda yeni değişiklikler var"
+	else echo "Güncelsin ($cur)"; fi
+}
+upd_install() {
+	local base="https://raw.githubusercontent.com/${KS_REPO:-$REPO_DEF}/main" t="/tmp/kedistat-update.$$" rv
+	rv=$(ks_sha 2>/dev/null)   # indirmeden ÖNCE alınır: arada commit gelirse sonraki denetim yakalar
 	ufetch "$base/kedistat-install.sh?t=$(date +%s)" "$t.sh" 40 || { echo "Kurulum dosyası indirilemedi."; rm -f "$t.sh"; return 1; }
 	head -c 400 "$t.sh" | grep -q 'KediStat' || { echo "İndirilen dosya KediStat kurulum dosyası gibi görünmüyor."; rm -f "$t.sh"; return 1; }
-	sh "$t.sh"; local rc=$?
-	rm -f "$t.sh"
+	KS_REV="$rv" sh "$t.sh"; local rc=$?
+	rm -f "$t.sh" "$UPD_LAST"
 	return $rc
+}
+cmd_update() { # check [--json] | install | bg | status | cached | auto | auto-set 0|1 | auto-get | rev
+	case "$1" in
+		check) if [ "$2" = "--json" ]; then upd_check json | tee "$UPD_LAST"; else upd_check text; fi ;;
+		cached) cat "$UPD_LAST" 2>/dev/null ;;
+		bg) rm -f "$UPD_LOG"
+			( "$0" update install >"$UPD_LOG" 2>&1 </dev/null; echo "__BITTI__ $?" >>"$UPD_LOG" ) >/dev/null 2>&1 &
+			echo started ;;
+		status) cat "$UPD_LOG" 2>/dev/null ;;
+		auto) # cron (günde bir): denetle; otomatik kurulum açıksa ve yenilik varsa kur
+			upd_check json > "$UPD_LAST.$$" 2>/dev/null && mv "$UPD_LAST.$$" "$UPD_LAST" || { rm -f "$UPD_LAST.$$"; return 0; }
+			if [ "$(cat "$UPD_AUTO" 2>/dev/null)" = 1 ] && grep -q '"fresh":true' "$UPD_LAST"; then
+				logger -t kedistat "otomatik güncelleme başlıyor"
+				upd_install 2>&1 | logger -t kedistat
+			fi ;;
+		auto-set) [ "$2" = 1 ] && echo 1 > "$UPD_AUTO" || rm -f "$UPD_AUTO"; echo ok ;;
+		auto-get) [ "$(cat "$UPD_AUTO" 2>/dev/null)" = 1 ] && echo 1 || echo 0 ;;
+		rev) # kurulu kodun commit kimliğini kaydeder (kurulum betiği çağırır)
+			local rv="${KS_REV:-$(ks_sha 2>/dev/null)}"
+			[ -n "$rv" ] && echo "$rv" > "$UPD_REV"; echo ok ;;
+		*) upd_install ;;
+	esac
 }
 
 cmd_uninstall() {
 	/etc/init.d/kedistat stop >/dev/null 2>&1; /etc/init.d/kedistat disable >/dev/null 2>&1
 	nft delete table inet $NFT_TABLE 2>/dev/null
-	sed -i '/kedistat sample/d' /etc/crontabs/root 2>/dev/null
+	sed -i '/kedistat sample/d;/kedistat update auto/d' /etc/crontabs/root 2>/dev/null
 	/etc/init.d/cron restart >/dev/null 2>&1
-	rm -rf /usr/bin/kedistat /usr/share/kedistat /etc/init.d/kedistat /www/luci-static/resources/view/kedistat \
+	rm -f /etc/kedistat.auto /tmp/kedistat.upd.json; rm -rf /usr/bin/kedistat /usr/share/kedistat /etc/init.d/kedistat /www/luci-static/resources/view/kedistat \
 		/usr/share/luci/menu.d/luci-app-kedistat.json /usr/share/rpcd/acl.d/luci-app-kedistat.json "$RUN"
 	rm -f /tmp/luci-indexcache* ; rm -rf /tmp/luci-modulecache 2>/dev/null
 	/etc/init.d/rpcd reload >/dev/null 2>&1
@@ -143,15 +189,16 @@ case "$1" in
 	sample) traffic_sample "$2" ;;
 	save|restore|reset|import) ucode "$SHARE/traffic.uc" "$1" ;;
 	version) echo "KediStat $(ks_version)" ;;
-	update) cmd_update "$2" ;;
+	update) shift; cmd_update "$@" ;;
 	uninstall) cmd_uninstall ;;
-	*) echo "kullanım: kedistat stats | sample [save] | save | restore | reset | import | version | update [check] | uninstall" >&2; exit 1 ;;
+	*) echo "kullanım: kedistat stats | sample [save] | save | restore | reset | import | version | update [check|bg|auto-set 0/1] | uninstall" >&2; exit 1 ;;
 esac
 KEDISTAT_EOF_1
-chmod 755 /usr/bin/kedistat
+chmod 755 /usr/bin/kedistat.new
+mv -f /usr/bin/kedistat.new /usr/bin/kedistat
 ok "/usr/bin/kedistat"
 mkdir -p "$(dirname /etc/init.d/kedistat)"
-cat > /etc/init.d/kedistat <<'KEDISTAT_EOF_2'
+cat > /etc/init.d/kedistat.new <<'KEDISTAT_EOF_2'
 #!/bin/sh /etc/rc.common
 # KediStat: açılışta kayıtlı trafik verisini geri yükler ve sayaçları kurar; kapanışta kaydeder.
 START=99
@@ -166,10 +213,11 @@ stop() {
 	$PROG sample save >/dev/null 2>&1
 }
 KEDISTAT_EOF_2
-chmod 755 /etc/init.d/kedistat
+chmod 755 /etc/init.d/kedistat.new
+mv -f /etc/init.d/kedistat.new /etc/init.d/kedistat
 ok "/etc/init.d/kedistat"
 mkdir -p "$(dirname /usr/share/kedistat/traffic.uc)"
-cat > /usr/share/kedistat/traffic.uc <<'KEDISTAT_EOF_3'
+cat > /usr/share/kedistat/traffic.uc.new <<'KEDISTAT_EOF_3'
 'use strict';
 // KediStat trafik sayacı: modemin toplam indirme/yükleme baytları (WAN arayüzü sayacı) ve LAN'daki her cihazın
 // (IP başına nft sayacı) indirme/yükleme baytları günlük kovalarda tutulur.
@@ -448,10 +496,11 @@ if (CMD == 'report') {
 warn('kullanım: traffic.uc sample [save] | report | save | restore | reset\n');
 exit(1);
 KEDISTAT_EOF_3
-chmod 644 /usr/share/kedistat/traffic.uc
+chmod 644 /usr/share/kedistat/traffic.uc.new
+mv -f /usr/share/kedistat/traffic.uc.new /usr/share/kedistat/traffic.uc
 ok "/usr/share/kedistat/traffic.uc"
 mkdir -p "$(dirname /www/luci-static/resources/view/kedistat/trafik.js)"
-cat > /www/luci-static/resources/view/kedistat/trafik.js <<'KEDISTAT_EOF_4'
+cat > /www/luci-static/resources/view/kedistat/trafik.js.new <<'KEDISTAT_EOF_4'
 'use strict';
 'require view';
 'require fs';
@@ -669,6 +718,15 @@ const CSS = `
 .krl-ns .krl-val{margin-top:4px}
 .krl-info{grid-column:1/-1;min-height:0;flex-direction:row;justify-content:center;align-items:baseline;gap:10px;padding:7px 10px}
 .krl-info .krl-lbl{border-top:0;padding-top:0;margin:0;width:auto}
+.ks-upd{margin:18px 0 0;padding:12px 14px;border-radius:12px;border:1px solid rgba(128,128,128,.28);background:linear-gradient(160deg,rgba(128,128,128,.10),rgba(128,128,128,.02))}
+.ks-upd-h{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px}
+.ks-upd-h b{font-size:1.02em}
+.ks-upd-st{margin:6px 0 8px;opacity:.85;font-size:.92em}
+.ks-upd-st.ks-new{color:#e0a82e;opacity:1;font-weight:600}
+.ks-upd-st.ks-bad{color:#e5534b;opacity:1}
+.ks-upd-st.ks-good{color:#3fb950;opacity:1}
+.ks-upd-btn{display:flex;flex-wrap:wrap;align-items:center;gap:10px}
+.ks-upd-auto{display:inline-flex;align-items:center;gap:6px;font-size:.88em;opacity:.85;cursor:pointer}
 .ks-sup{margin:18px 0 6px;padding:14px 16px;border-radius:12px;border:1px solid rgba(255,221,0,.35);background:linear-gradient(160deg,rgba(255,221,0,.10),rgba(255,221,0,.02));display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px}
 .ks-sup b{display:block;font-size:1.02em;margin-bottom:2px}
 .ks-sup span{opacity:.75;font-size:.9em}
@@ -906,6 +964,49 @@ return view.extend({
 			h('div', { 'class': 'krl-tile krl-info krl-ns' }, [h('div', { 'class': 'krl-val', 'style': 'color:inherit' }, lb.up), h('div', { 'class': 'krl-lbl' }, 'Modem açık')])
 		]);
 	},
+	/* GitHub'dan güncelleme: denetle / şimdi güncelle / otomatik kur */
+	buildUpdate() {
+		const st = h('div', { 'class': 'ks-upd-st' }, 'Denetleniyor…');
+		const vr = h('span', { 'style': 'opacity:.7;font-size:.88em' }, '');
+		const say = (t, c) => { st.className = 'ks-upd-st ' + (c || ''); st.textContent = t; };
+		const btnI = h('button', { 'class': 'cbi-button cbi-button-action', 'style': 'display:none' }, 'Şimdi güncelle');
+		const btnC = h('button', { 'class': 'cbi-button' }, 'Güncellemeyi denetle');
+		const auto = h('input', { 'type': 'checkbox' });
+		const show = j => {
+			if (!j) return say('Henüz denetlenmedi', '');
+			if (j.cur) vr.textContent = 'Kurulu: v' + j.cur;
+			if (!j.ok) { btnI.style.display = 'none'; return say("GitHub'a ulaşılamadı", 'ks-bad'); }
+			if (j.newer) { btnI.style.display = ''; return say('Yeni sürüm var: v' + j.cur + ' → v' + j.latest, 'ks-new'); }
+			if (j.rev_new) { btnI.style.display = ''; return say('Aynı sürümde (v' + j.cur + ') depoda yeni değişiklikler var', 'ks-new'); }
+			btnI.style.display = 'none'; say('Güncelsin (v' + j.cur + ')', 'ks-good');
+		};
+		const chk = () => { btnC.disabled = true; say('Denetleniyor…', ''); return fs.exec(CLI, ['update', 'check', '--json']).then(r => { let j = null; try { j = JSON.parse(r.stdout || 'null'); } catch (e) {} show(j || { ok: false }); }).catch(() => show({ ok: false })).then(() => { btnC.disabled = false; }); };
+		const inst = () => {
+			btnI.disabled = btnC.disabled = true; say('Güncelleme indiriliyor ve kuruluyor…', '');
+			fs.exec(CLI, ['update', 'bg']).then(() => {
+				let n = 0;
+				const tm = setInterval(() => {
+					fs.exec(CLI, ['update', 'status']).then(r => {
+						const o = r.stdout || '', m = o.match(/__BITTI__ (\d+)/);
+						if (!m) { if (++n > 90) { clearInterval(tm); say('Zaman aşımı; sayfayı yenileyip tekrar dene', 'ks-bad'); btnC.disabled = btnI.disabled = false; } return; }
+						clearInterval(tm);
+						if (m[1] === '0') { say('Güncellendi, sayfa yenileniyor…', 'ks-good'); setTimeout(() => location.reload(true), 1200); }
+						else { say('Güncelleme başarısız: ' + (o.trim().split('\n').slice(-2, -1)[0] || 'bilinmeyen hata'), 'ks-bad'); btnC.disabled = btnI.disabled = false; }
+					}).catch(() => {});
+				}, 2000);
+			}).catch(() => { say('Güncelleme başlatılamadı', 'ks-bad'); btnC.disabled = btnI.disabled = false; });
+		};
+		btnC.addEventListener('click', chk); btnI.addEventListener('click', inst);
+		auto.addEventListener('change', () => { fs.exec(CLI, ['update', 'auto-set', auto.checked ? '1' : '0']).catch(() => {}); });
+		fs.exec(CLI, ['update', 'auto-get']).then(r => { auto.checked = (r.stdout || '').trim() === '1'; }).catch(() => {});
+		fs.exec(CLI, ['update', 'cached']).then(r => { let j = null; try { j = JSON.parse(r.stdout || 'null'); } catch (e) {} if (j) show(j); else { fs.exec(CLI, ['version']).then(v => { vr.textContent = 'Kurulu: ' + ((v.stdout || '').trim().replace(/^KediStat /, 'v')); }).catch(() => {}); say('Henüz denetlenmedi', ''); } }).catch(() => {});
+		return h('div', { 'class': 'ks-upd' }, [
+			h('div', { 'class': 'ks-upd-h' }, [h('b', {}, '⟳ Güncelleme (GitHub)'), vr]),
+			st,
+			h('div', { 'class': 'ks-upd-btn' }, [btnC, btnI, h('label', { 'class': 'ks-upd-auto' }, [auto, 'Yeni sürümü otomatik kur (günde bir denetlenir)'])])
+		]);
+	},
+
 	/* Hız birimi seçici: MB/s (bayt) ya da Mbps (bit). Seçim tarayıcıda saklanır. */
 	buildRateSeg() {
 		const btns = {};
@@ -1103,6 +1204,7 @@ return view.extend({
 			h('style', {}, CSS),
 			h('h2', {}, [h('img', { 'src': '/luci-static/kedistat-logo.svg', 'style': 'height:1.3em;vertical-align:-0.25em;margin-right:8px;border-radius:6px' }), 'KediStat — Trafik']),
 			this.elTraffic,
+			this.buildUpdate(),
 			h('div', { 'class': 'ks-sup' }, [
 				h('div', {}, [h('b', {}, '☕ Beğendin mi?'), h('span', {}, 'KediStat ücretsiz ve açık kaynak. Emeğe küçük bir destek çok değerli.')]),
 				h('a', { 'class': 'ks-coffee', 'href': 'https://buymeacoffee.com/sabanvurgun', 'target': '_blank', 'rel': 'noopener noreferrer' }, '☕ Bana bir kahve ısmarla')
@@ -1116,10 +1218,11 @@ return view.extend({
 	handleReset: null
 });
 KEDISTAT_EOF_4
-chmod 644 /www/luci-static/resources/view/kedistat/trafik.js
+chmod 644 /www/luci-static/resources/view/kedistat/trafik.js.new
+mv -f /www/luci-static/resources/view/kedistat/trafik.js.new /www/luci-static/resources/view/kedistat/trafik.js
 ok "/www/luci-static/resources/view/kedistat/trafik.js"
 mkdir -p "$(dirname /www/luci-static/kedistat-logo.svg)"
-cat > /www/luci-static/kedistat-logo.svg <<'KEDISTAT_EOF_5'
+cat > /www/luci-static/kedistat-logo.svg.new <<'KEDISTAT_EOF_5'
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 108 108" width="256" height="256">
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
@@ -1135,10 +1238,11 @@ cat > /www/luci-static/kedistat-logo.svg <<'KEDISTAT_EOF_5'
   <path fill="#A78BFA" d="M51,69 L57,69 L54,73 Z"/>
 </svg>
 KEDISTAT_EOF_5
-chmod 644 /www/luci-static/kedistat-logo.svg
+chmod 644 /www/luci-static/kedistat-logo.svg.new
+mv -f /www/luci-static/kedistat-logo.svg.new /www/luci-static/kedistat-logo.svg
 ok "/www/luci-static/kedistat-logo.svg"
 mkdir -p "$(dirname /usr/share/luci/menu.d/luci-app-kedistat.json)"
-cat > /usr/share/luci/menu.d/luci-app-kedistat.json <<'KEDISTAT_EOF_6'
+cat > /usr/share/luci/menu.d/luci-app-kedistat.json.new <<'KEDISTAT_EOF_6'
 {
 	"admin/services/kedistat": {
 		"title": "KediStat Trafik",
@@ -1148,10 +1252,11 @@ cat > /usr/share/luci/menu.d/luci-app-kedistat.json <<'KEDISTAT_EOF_6'
 	}
 }
 KEDISTAT_EOF_6
-chmod 644 /usr/share/luci/menu.d/luci-app-kedistat.json
+chmod 644 /usr/share/luci/menu.d/luci-app-kedistat.json.new
+mv -f /usr/share/luci/menu.d/luci-app-kedistat.json.new /usr/share/luci/menu.d/luci-app-kedistat.json
 ok "/usr/share/luci/menu.d/luci-app-kedistat.json"
 mkdir -p "$(dirname /usr/share/rpcd/acl.d/luci-app-kedistat.json)"
-cat > /usr/share/rpcd/acl.d/luci-app-kedistat.json <<'KEDISTAT_EOF_7'
+cat > /usr/share/rpcd/acl.d/luci-app-kedistat.json.new <<'KEDISTAT_EOF_7'
 {
 	"luci-app-kedistat": {
 		"description": "KediStat trafik izleyici",
@@ -1164,7 +1269,8 @@ cat > /usr/share/rpcd/acl.d/luci-app-kedistat.json <<'KEDISTAT_EOF_7'
 	}
 }
 KEDISTAT_EOF_7
-chmod 644 /usr/share/rpcd/acl.d/luci-app-kedistat.json
+chmod 644 /usr/share/rpcd/acl.d/luci-app-kedistat.json.new
+mv -f /usr/share/rpcd/acl.d/luci-app-kedistat.json.new /usr/share/rpcd/acl.d/luci-app-kedistat.json
 ok "/usr/share/rpcd/acl.d/luci-app-kedistat.json"
 
 
@@ -1177,7 +1283,9 @@ ok "menü yeri: $MNAME → KediStat Trafik"
 
 touch /etc/crontabs/root
 sed -i '/kedistat sample/d' /etc/crontabs/root
+sed -i '/kedistat update auto/d' /etc/crontabs/root
 echo '* * * * * /usr/bin/kedistat sample >/dev/null 2>&1' >> /etc/crontabs/root
+echo "$(( $(date +%S) % 50 + 3 )) 4 * * * /usr/bin/kedistat update auto >/dev/null 2>&1" >> /etc/crontabs/root
 /etc/init.d/cron enable >/dev/null 2>&1; /etc/init.d/cron restart >/dev/null 2>&1
 ok "sayaç örnekleme (dakikada bir) ayarlandı"
 
@@ -1190,6 +1298,7 @@ echo "$KS_VERSION" > /usr/share/kedistat/version
 if [ -s /etc/kediray.traffic.json ] || [ -s /var/etc/kediray/traffic.json ]; then
 	R=$(/usr/bin/kedistat import 2>/dev/null) && ok "KediRay geçmişi: $R"
 fi
+/usr/bin/kedistat update rev >/dev/null 2>&1
 ok "servis etkinleştirildi, sayaçlar başlatıldı"
 
 # LuCI menüsü ve yetki dosyası yenilensin

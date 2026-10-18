@@ -23,7 +23,7 @@ for line in open(os.path.join(ROOT, 'tools/files.map'), encoding='utf-8'):
     n += 1
     mark = 'KEDISTAT_EOF_%d' % n
     assert mark not in data, 'işaret içerikte geçiyor: ' + src
-    parts.append('mkdir -p "$(dirname %s)"\ncat > %s <<\'%s\'\n%s%s\nchmod %s %s\n' % (dst, dst, mark, data, mark, mode, dst))
+    parts.append('mkdir -p "$(dirname %s)"\ncat > %s.new <<\'%s\'\n%s%s\nchmod %s %s.new\nmv -f %s.new %s\n' % (dst, dst, mark, data, mark, mode, dst, dst, dst))
     parts.append('ok "%s"\n' % dst)
 
 tpl = open(os.path.join(ROOT, 'tools/install.sh.in'), encoding='utf-8').read()
