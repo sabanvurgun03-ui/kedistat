@@ -760,6 +760,13 @@ const CSS = `
 .krl-ns .krl-val{margin-top:4px}
 .krl-info{grid-column:1/-1;min-height:0;flex-direction:row;justify-content:center;align-items:baseline;gap:10px;padding:7px 10px}
 .krl-info .krl-lbl{border-top:0;padding-top:0;margin:0;width:auto}
+.ks-tools{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px;margin:0 0 8px}
+.ks-edrow{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin:0 0 6px;padding:6px 8px;border:1px dashed rgba(128,128,128,.5);border-radius:8px}
+.ks-edsub{gap:12px;border-style:solid;border-color:rgba(128,128,128,.2)}
+.ks-zoom{position:fixed;right:12px;bottom:12px;z-index:9999;display:flex;align-items:center;gap:2px;padding:3px;border-radius:999px;background:rgba(30,34,41,.88);color:#fff;box-shadow:0 2px 10px rgba(0,0,0,.35);font:600 13px system-ui,sans-serif;user-select:none}
+.ks-zoom button{border:0;background:transparent;color:inherit;cursor:pointer;font:inherit;height:28px;min-width:28px;padding:0 6px;border-radius:999px}
+.ks-zoom button:hover{background:rgba(255,255,255,.14)}
+.ks-zoom .ks-zv{min-width:52px}
 .ks-upd{margin:18px 0 0;padding:12px 14px;border-radius:12px;border:1px solid rgba(128,128,128,.28);background:linear-gradient(160deg,rgba(128,128,128,.10),rgba(128,128,128,.02))}
 .ks-upd-h{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px}
 .ks-upd-h b{font-size:1.02em}
@@ -810,6 +817,87 @@ return view.extend({
 
 	lastStats: null,
 	liveRate: null,
+	/* Düzen: hangi bölüm görünsün, hangi sırada, hangi dönem kartları. Tarayıcıda saklanır. */
+	secTitles: { live: 'Şu an', periods: 'Toplam', devs: 'Cihaz bazında trafik', chart: 'Ortalama' },
+	rowTitles: { today: 'Bugün', yesterday: 'Dün', week: 'Bu hafta', month: 'Bu ay', total: 'Toplam' },
+	loadLayout() {
+		const def = { order: ['live', 'periods', 'devs', 'chart'], hide: {}, hideRows: {} };
+		try {
+			const c = JSON.parse(localStorage.getItem('kedistat-layout') || 'null');
+			if (c && Array.isArray(c.order)) {
+				const o = c.order.filter(k => def.order.indexOf(k) >= 0);
+				def.order.forEach(k => { if (o.indexOf(k) < 0) o.push(k); });
+				return { order: o, hide: c.hide || {}, hideRows: c.hideRows || {} };
+			}
+		} catch (e) {}
+		return def;
+	},
+	saveLayout() { try { localStorage.setItem('kedistat-layout', JSON.stringify(this.layoutCfg)); } catch (e) {} },
+	relayout() {
+		this.saveLayout(); this.layout();
+		if (this.lastStats) this.renderTraffic(this.lastStats);
+	},
+	layout() {
+		const c = this.layoutCfg, ed = this.editing, out = [];
+		dom.content(this.elTools, [
+			h('button', { 'class': 'btn cbi-button' + (ed ? ' cbi-button-positive' : ''), 'click': () => { this.editing = !this.editing; this.layout(); } }, ed ? '✓ Bitti' : '⚙ Düzenle'),
+			ed ? h('button', { 'class': 'btn cbi-button', 'click': () => { this.layoutCfg = { order: ['live', 'periods', 'devs', 'chart'], hide: {}, hideRows: {} }; this.relayout(); } }, 'Varsayılana dön') : '',
+			(!c.hide.live || ed) ? this.elRate : ''
+		]);
+		c.order.forEach((k, i) => {
+			if (c.hide[k] && !ed) return;
+			const box = [];
+			if (ed) {
+				const mv = d => { const j = i + d; if (j < 0 || j >= c.order.length) return; const t = c.order[i]; c.order[i] = c.order[j]; c.order[j] = t; this.relayout(); };
+				const cb = h('input', { 'type': 'checkbox' });
+				cb.checked = !c.hide[k];
+				cb.addEventListener('change', () => { c.hide[k] = !cb.checked; this.relayout(); });
+				box.push(h('div', { 'class': 'ks-edrow' }, [
+					h('b', { 'style': 'flex:1' }, this.secTitles[k]),
+					h('button', { 'class': 'btn cbi-button', 'click': () => mv(-1) }, '▲'),
+					h('button', { 'class': 'btn cbi-button', 'click': () => mv(1) }, '▼'),
+					h('label', { 'style': 'margin-left:8px;white-space:nowrap' }, [cb, ' Göster'])
+				]));
+				if (k === 'periods') {
+					box.push(h('div', { 'class': 'ks-edrow ks-edsub' }, Object.keys(this.rowTitles).map(rk => {
+						const rc = h('input', { 'type': 'checkbox' });
+						rc.checked = !c.hideRows[rk];
+						rc.addEventListener('change', () => { c.hideRows[rk] = !rc.checked; this.relayout(); });
+						return h('label', { 'style': 'white-space:nowrap' }, [rc, ' ' + this.rowTitles[rk]]);
+					})));
+				}
+			}
+			box.push(h('div', { 'style': (ed && c.hide[k]) ? 'opacity:.35' : '' }, this.secs[k]));
+			out.push(h('div', {}, box));
+		});
+		dom.content(this.elSecs, out);
+	},
+
+	/* Yakınlaştırma / uzaklaştırma: % değeri tarayıcıda saklanır; sağ alttaki − % + düğmeleri */
+	zoomApply(z) {
+		z = Math.min(160, Math.max(60, Math.round((+z || 100) / 10) * 10));
+		try { localStorage.setItem('kedistat-zoom', String(z)); } catch (e) {}
+		let st = document.getElementById('ks-zoom-css');
+		if (!st) { st = document.createElement('style'); st.id = 'ks-zoom-css'; document.head.appendChild(st); }
+		st.textContent = z !== 100 ? 'body #maincontent{zoom:' + (z / 100) + '}' : '';
+		const v = document.getElementById('ks-zoom-val');
+		if (v) v.textContent = z + '%';
+		return z;
+	},
+	zoomBar() {
+		let z = 100;
+		try { z = +localStorage.getItem('kedistat-zoom') || 100; } catch (e) {}
+		const old = document.getElementById('ks-zoom');
+		if (old) old.remove();
+		const bar = h('div', { 'id': 'ks-zoom', 'class': 'ks-zoom' }, [
+			h('button', { 'type': 'button', 'title': 'Uzaklaştır', 'click': ev => { ev.preventDefault(); z = this.zoomApply(z - 10); } }, '−'),
+			h('button', { 'type': 'button', 'id': 'ks-zoom-val', 'title': 'Sıfırla (%100)', 'class': 'ks-zv', 'click': ev => { ev.preventDefault(); z = this.zoomApply(100); } }, '100%'),
+			h('button', { 'type': 'button', 'title': 'Yakınlaştır', 'click': ev => { ev.preventDefault(); z = this.zoomApply(z + 10); } }, '+')
+		]);
+		document.body.appendChild(bar);
+		z = this.zoomApply(z);
+	},
+
 	trafficBuilt: false,
 	chartSig: '',
 	days: null,
@@ -1131,7 +1219,8 @@ return view.extend({
 
 	/* Dönem kutuları (Bugün/Dün/Bu hafta/Bu ay/Toplam) + dönem karşılaştırması */
 	renderPeriods(s) {
-		const rows = [['today', 'Bugün', s.today], ['yesterday', 'Dün', s.yesterday], ['week', 'Bu hafta', s.week], ['month', 'Bu ay', s.month], ['total', 'Toplam', s.total]];
+		const hr = (this.layoutCfg && this.layoutCfg.hideRows) || {};
+		const rows = [['today', 'Bugün', s.today], ['yesterday', 'Dün', s.yesterday], ['week', 'Bu hafta', s.week], ['month', 'Bu ay', s.month], ['total', 'Toplam', s.total]].filter(r => !hr[r[0]]);
 		// Karşılaştırma (son 30 günlük kovalardan): bugün→dün, dün→önceki gün, bu hafta→geçen hafta aynı süre
 		const dd = s.days || [], tot = x => x.r + x.t, nd = dd.length;
 		const sumD = (i, j) => { let t = 0; for (let k = Math.max(0, i); k <= j && k < nd; k++) t += tot(dd[k]); return t; };
@@ -1232,7 +1321,7 @@ return view.extend({
 		if (!this.trafficBuilt) {
 			this.lb = { hd: [], hu: [] };
 			this.elRate = this.buildRateSeg();
-			this.elLive = h('div', {}, [this.elRate, this.buildLiveBand()]);
+			this.elLive = h('div', {}, [this.buildLiveBand()]);
 			this.elPeriods = h('div', {});
 			this.elDevTr = h('div', {});
 			this.elChart = h('div', { 'class': 'krc-wrap' });
@@ -1253,20 +1342,28 @@ return view.extend({
 				this.segB[String(d[0])] = bt;
 				return bt;
 			}));
-			this.card(this.elTraffic, 'traffic', 'Trafik', [
-				this.elLive,
-				this.fold('t-periods', 'Toplam', this.elPeriods),
-				this.fold('t-devs', 'Cihaz bazında trafik', this.elDevTr),
-				this.fold('t-chart', 'Ortalama', h('div', {}, [
+			this.layoutCfg = this.loadLayout(); this.editing = false;
+			this.elTools = h('div', { 'class': 'ks-tools' });
+			this.elSecs = h('div', {});
+			this.secs = {
+				live: this.elLive,
+				periods: this.fold('t-periods', 'Toplam', this.elPeriods),
+				devs: this.fold('t-devs', 'Cihaz bazında trafik', this.elDevTr),
+				chart: this.fold('t-chart', 'Ortalama', h('div', {}, [
 					this.elChartTiles,
 					h('div', { 'class': 'krc-ctl' }, [rangeSeg]),
 					this.elLegend,
 					this.elChart,
 					this.elChartInfo
-				])),
+				]))
+			};
+			this.card(this.elTraffic, 'traffic', 'Trafik', [
+				this.elTools,
+				this.elSecs,
 				h('div', { 'class': 'kr-sub', 'style': 'margin-top:8px' }, 'Sayaçlar modem yeniden başlasa da saklanır (her saat flash\'a yazılır). İndirme = modeme/cihaza gelen, yükleme = giden.')
 			]);
 			this.trafficBuilt = true;
+			this.layout();
 		}
 		this.renderLiveBand(s, r);
 		this.renderPeriods(s);
@@ -1285,6 +1382,7 @@ return view.extend({
 		this.elTraffic = h('div', { 'class': 'kr-card kr-traffic', 'style': 'margin-bottom:14px' });
 		this.trafficBuilt = false; this.chartSig = ''; this.lastStats = null;
 		this.renderTraffic(null);
+		setTimeout(() => this.zoomBar(), 0);
 		// poll ile: sayfadan çıkınca LuCI durdurur, sekme arkadayken boşa çalışmaz
 		poll.add(() => runJson(['stats']).then(s => this.renderTraffic(s)), 2);
 		return h('div', {}, [

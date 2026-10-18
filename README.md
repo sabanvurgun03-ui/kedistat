@@ -29,6 +29,7 @@ LuCI → **Araçlar** (yoksa **Hizmetler**) → **KediStat Trafik**.
 - KediRay kuruluysa geçmiş verileri (günlük, aylık, cihaz başına) kurulumda otomatik içe aktarılır; elle: `kedistat import`
 - Sayfadan GitHub güncellemesi: denetle / şimdi güncelle / günde bir otomatik denetim ve isteğe bağlı otomatik kurulum (sürüm aynı kalsa da depodaki yeni commit yakalanır)
 - Yedekleme: panelden yedek dosyası indir / dosyadan geri yükle (`kedistat backup`, `kedistat restore-file`)
+- Kart özelleştirme (⚙ Düzenle: bölümleri gizle/sırala, dönem kartlarını seç) ve yakınlaştırma (−/%/+, %60-160); ayarlar tarayıcıda saklanır
 - Sayaçlar RAM'de tutulur, düzenli aralıkla flaşa yazılır; yeniden başlatmada geri yüklenir
 
 ## Komutlar
