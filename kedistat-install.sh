@@ -123,14 +123,6 @@ ks_sha() { # depodaki main dalının son commit kimliği (API; sınırlıysa ato
 upd_check() { # <json|text>
 	local base="https://raw.githubusercontent.com/${KS_REPO:-$REPO_DEF}/main" t="/tmp/kedistat-update.$$" cur latest head inst fresh=false newer=false rn=false
 	cur=$(ks_version)
-	# Test anahtarı: /tmp/kedistat.fakeupd dosyası varsa denetim sahte "yeni sürüm var" döner (silince kalkar; RAM'dedir)
-	if [ -f /tmp/kedistat.fakeupd ]; then
-		latest=$(echo "$cur" | awk -F. '{ $NF = $NF + 1 } 1' OFS=.)
-		if [ "$1" = json ]; then
-			printf '{"ok":true,"cur":"%s","latest":"%s","newer":true,"rev_new":false,"fresh":true,"head":"test","ts":%s}\n' "$cur" "$latest" "$(date +%s)"
-		else echo "Yeni sürüm var: $cur -> $latest (test)"; fi
-		return 0
-	fi
 	if ! ufetch "$base/VERSION?t=$(date +%s)" "$t.v" 10; then
 		rm -f "$t.v"
 		[ "$1" = json ] && echo '{"ok":false,"cur":"'"$cur"'"}' || echo "GitHub'a ulaşılamadı: $base"
