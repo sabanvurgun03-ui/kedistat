@@ -1,8 +1,8 @@
 #!/bin/sh
-# KediStat 1.0.0 — OpenWrt modem için trafik izleyici (toplam + cihaz başına). Tek dosya kurulum betiği.
+# KediStat 1.0.1 — OpenWrt modem için trafik izleyici (toplam + cihaz başına). Tek dosya kurulum betiği.
 # Kurulum:  wget -qO- https://raw.githubusercontent.com/sabanvurgun03-ui/kedistat/main/kedistat-install.sh | sh
 # Kaldırma: kedistat uninstall
-KS_VERSION="1.0.0"
+KS_VERSION="1.0.1"
 KS_REPO="sabanvurgun03-ui/kedistat"
 
 say() { printf '%s\n' "$*"; }
@@ -630,7 +630,15 @@ const CSS = `
 .krl-usw i{opacity:.3;font-style:normal}
 .krc-title{margin:14px 0 4px;font-weight:600;opacity:.85}
 .krl-ns .krl-val{margin-top:4px}
-.krl-info{grid-column:1/-1}
+.krl-info{grid-column:1/-1;min-height:0;flex-direction:row;justify-content:center;align-items:baseline;gap:10px;padding:7px 10px}
+.krl-info .krl-lbl{border-top:0;padding-top:0;margin:0;width:auto}
+.ks-sup{margin:18px 0 6px;padding:14px 16px;border-radius:12px;border:1px solid rgba(255,221,0,.35);background:linear-gradient(160deg,rgba(255,221,0,.10),rgba(255,221,0,.02));display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px}
+.ks-sup b{display:block;font-size:1.02em;margin-bottom:2px}
+.ks-sup span{opacity:.75;font-size:.9em}
+.ks-coffee{display:inline-flex;align-items:center;gap:8px;padding:9px 16px;border-radius:999px;background:#ffdd00;color:#000!important;font-weight:700;text-decoration:none!important;box-shadow:0 2px 8px rgba(0,0,0,.25);transition:transform .15s,box-shadow .15s}
+.ks-coffee:hover{transform:translateY(-1px);box-shadow:0 4px 12px rgba(0,0,0,.35)}
+.ks-foot{text-align:center;opacity:.6;font-size:.82em;margin:8px 0 2px}
+.ks-foot a{color:inherit}
 .krl-info .krl-val{font-size:1.02em;font-weight:700}
 .krl-sdown .krl-val,.krl-sup .krl-val{margin-top:4px}
 `;
@@ -1057,7 +1065,12 @@ return view.extend({
 		return h('div', {}, [
 			h('style', {}, CSS),
 			h('h2', {}, [h('img', { 'src': '/luci-static/kedistat-logo.svg', 'style': 'height:1.3em;vertical-align:-0.25em;margin-right:8px;border-radius:6px' }), 'KediStat — Trafik']),
-			this.elTraffic
+			this.elTraffic,
+			h('div', { 'class': 'ks-sup' }, [
+				h('div', {}, [h('b', {}, '☕ Beğendin mi?'), h('span', {}, 'KediStat ücretsiz ve açık kaynak. Emeğe küçük bir destek çok değerli.')]),
+				h('a', { 'class': 'ks-coffee', 'href': 'https://buymeacoffee.com/sabanvurgun', 'target': '_blank', 'rel': 'noopener noreferrer' }, '☕ Bana bir kahve ısmarla')
+			]),
+			h('div', { 'class': 'ks-foot' }, [h('a', { 'href': 'https://github.com/sabanvurgun03-ui/kedistat', 'target': '_blank', 'rel': 'noopener noreferrer' }, 'KediStat'), ' · Şaban Vurgun · GPL-3.0'])
 		]);
 	},
 
