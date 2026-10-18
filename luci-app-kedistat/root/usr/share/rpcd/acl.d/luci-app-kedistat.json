@@ -6,6 +6,11 @@
 				"/usr/bin/kedistat": [ "exec" ],
 				"/usr/bin/kedistat *": [ "exec" ]
 			}
+		},
+		"write": {
+			"file": {
+				"/tmp/kedistat-restore.json": [ "write" ]
+			}
 		}
 	}
 }

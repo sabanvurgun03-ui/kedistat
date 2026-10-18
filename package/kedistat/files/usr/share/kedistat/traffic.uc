@@ -165,6 +165,27 @@ if (CMD == 'import') {
 	print('içe aktarıldı: ' + nd + ' gün, ' + nv + ' cihaz günü\n');
 	exit(0);
 }
+if (CMD == 'backup') {
+	// Tüm sayaç verisini tek JSON olarak yazdırır (yedek dosyası)
+	let s = load();
+	delete s.last; delete s.sess;
+	for (let ip, e in s.dev) delete e.last;
+	print(sprintf('%J\n', { kedistat_backup: 1, created: time(), data: s }));
+	exit(0);
+}
+if (CMD == 'restorefile') {
+	// Yedek dosyasından geri yükler (mevcut verinin yerine geçer)
+	let b = readj(ARGV[1] ?? '');
+	let d = b?.kedistat_backup == 1 ? b.data : null;
+	if (!d || type(d.days) != 'object' || (d.dev != null && type(d.dev) != 'object')) { print('geçersiz yedek dosyası\n'); exit(1); }
+	d.dev ??= {};
+	delete d.last; delete d.sess;
+	for (let ip, e in d.dev) delete e.last;
+	d.saved = time();
+	fs.mkdir(RUN); writej(RAMF, d); writej(FLASHF, d);
+	print('ok\n');
+	exit(0);
+}
 if (CMD == 'reset') { fs.unlink(RAMF); fs.unlink(FLASHF); print('ok\n'); exit(0); }
 
 if (CMD == 'report') {

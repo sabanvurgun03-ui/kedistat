@@ -21,7 +21,7 @@ mkdir -p "$(dirname /usr/bin/kedistat)"
 cat > /usr/bin/kedistat.new <<'KEDISTAT_EOF_1'
 #!/bin/sh
 # KediStat — OpenWrt modem için trafik izleyici (toplam + cihaz başına). Geliştirici: Şaban Vurgun · 2026
-# Kullanım: kedistat stats | sample [save] | save | restore | reset | import | version | update [check|bg|auto-set 0/1] | uninstall
+# Kullanım: kedistat stats | sample [save] | save | restore | reset | import | backup | restore-file <dosya> | version | update [check|bg|auto-set 0/1] | uninstall
 SHARE=/usr/share/kedistat
 RUN=/var/etc/kedistat
 REPO_DEF="sabanvurgun03-ui/kedistat"
@@ -187,11 +187,12 @@ cmd_uninstall() {
 case "$1" in
 	stats|"") cmd_stats ;;
 	sample) traffic_sample "$2" ;;
-	save|restore|reset|import) ucode "$SHARE/traffic.uc" "$1" ;;
+	save|restore|reset|import|backup) ucode "$SHARE/traffic.uc" "$1" ;;
+	restore-file) ( traffic_env; ucode "$SHARE/traffic.uc" restorefile "${2:-/tmp/kedistat-restore.json}" ) ;;
 	version) echo "KediStat $(ks_version)" ;;
 	update) shift; cmd_update "$@" ;;
 	uninstall) cmd_uninstall ;;
-	*) echo "kullanım: kedistat stats | sample [save] | save | restore | reset | import | version | update [check|bg|auto-set 0/1] | uninstall" >&2; exit 1 ;;
+	*) echo "kullanım: kedistat stats | sample [save] | save | restore | reset | import | backup | restore-file <dosya> | version | update [check|bg|auto-set 0/1] | uninstall" >&2; exit 1 ;;
 esac
 KEDISTAT_EOF_1
 chmod 755 /usr/bin/kedistat.new
@@ -383,6 +384,27 @@ if (CMD == 'import') {
 	s.imported = time();
 	fs.mkdir(RUN); writej(RAMF, s); writej(FLASHF, s);
 	print('içe aktarıldı: ' + nd + ' gün, ' + nv + ' cihaz günü\n');
+	exit(0);
+}
+if (CMD == 'backup') {
+	// Tüm sayaç verisini tek JSON olarak yazdırır (yedek dosyası)
+	let s = load();
+	delete s.last; delete s.sess;
+	for (let ip, e in s.dev) delete e.last;
+	print(sprintf('%J\n', { kedistat_backup: 1, created: time(), data: s }));
+	exit(0);
+}
+if (CMD == 'restorefile') {
+	// Yedek dosyasından geri yükler (mevcut verinin yerine geçer)
+	let b = readj(ARGV[1] ?? '');
+	let d = b?.kedistat_backup == 1 ? b.data : null;
+	if (!d || type(d.days) != 'object' || (d.dev != null && type(d.dev) != 'object')) { print('geçersiz yedek dosyası\n'); exit(1); }
+	d.dev ??= {};
+	delete d.last; delete d.sess;
+	for (let ip, e in d.dev) delete e.last;
+	d.saved = time();
+	fs.mkdir(RUN); writej(RAMF, d); writej(FLASHF, d);
+	print('ok\n');
 	exit(0);
 }
 if (CMD == 'reset') { fs.unlink(RAMF); fs.unlink(FLASHF); print('ok\n'); exit(0); }
@@ -964,6 +986,50 @@ return view.extend({
 			h('div', { 'class': 'krl-tile krl-info krl-ns' }, [h('div', { 'class': 'krl-val', 'style': 'color:inherit' }, lb.up), h('div', { 'class': 'krl-lbl' }, 'Modem açık')])
 		]);
 	},
+	/* Yedekleme: tüm sayaç verisini dosyaya indir / dosyadan geri yükle */
+	buildBackup() {
+		const msg = h('div', { 'class': 'ks-upd-st' }, 'Sayaç verilerini (günlük, aylık, cihaz başına) tek dosyaya yedekleyebilirsin.');
+		const say = (t, c) => { msg.className = 'ks-upd-st ' + (c || ''); msg.textContent = t; };
+		const btnB = h('button', { 'class': 'cbi-button' }, '⬇ Yedek indir');
+		const btnR = h('button', { 'class': 'cbi-button' }, '⬆ Yedekten geri yükle');
+		const file = h('input', { 'type': 'file', 'accept': '.json,application/json', 'style': 'display:none' });
+		btnB.addEventListener('click', () => {
+			say('Yedek hazırlanıyor…', '');
+			fs.exec(CLI, ['save']).then(() => fs.exec(CLI, ['backup'])).then(r => {
+				const t = r.stdout || '';
+				if (t.indexOf('kedistat_backup') < 0) return say('Yedek alınamadı', 'ks-bad');
+				const d = new Date(), p2 = x => (x < 10 ? '0' : '') + x;
+				const name = 'kedistat-yedek-' + d.getFullYear() + '-' + p2(d.getMonth() + 1) + '-' + p2(d.getDate()) + '.json';
+				const a = document.createElement('a');
+				a.href = URL.createObjectURL(new Blob([t], { type: 'application/json' })); a.download = name;
+				document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+				say('Yedek indirildi: ' + name, 'ks-good');
+			}).catch(() => say('Yedek alınamadı', 'ks-bad'));
+		});
+		btnR.addEventListener('click', () => { file.value = ''; file.click(); });
+		file.addEventListener('change', () => {
+			const f = file.files && file.files[0];
+			if (!f) return;
+			if (!confirm('Mevcut sayaç verisi "' + f.name + '" dosyasındaki yedekle DEĞİŞTİRİLECEK. Devam edilsin mi?')) return;
+			const rd = new FileReader();
+			rd.onload = () => {
+				say('Geri yükleniyor…', '');
+				fs.write('/tmp/kedistat-restore.json', String(rd.result))
+					.then(() => fs.exec(CLI, ['restore-file']))
+					.then(r => {
+						if ((r.stdout || '').trim() !== 'ok') return say('Geçersiz yedek dosyası', 'ks-bad');
+						say('Geri yüklendi, sayfa yenileniyor…', 'ks-good'); setTimeout(() => location.reload(true), 1000);
+					}).catch(() => say('Geri yükleme başarısız', 'ks-bad'));
+			};
+			rd.readAsText(f);
+		});
+		return h('div', { 'class': 'ks-upd' }, [
+			h('div', { 'class': 'ks-upd-h' }, [h('b', {}, '💾 Yedekleme')]),
+			msg,
+			h('div', { 'class': 'ks-upd-btn' }, [btnB, btnR, file])
+		]);
+	},
+
 	/* GitHub'dan güncelleme: denetle / şimdi güncelle / otomatik kur */
 	buildUpdate() {
 		const st = h('div', { 'class': 'ks-upd-st' }, 'Denetleniyor…');
@@ -1001,7 +1067,7 @@ return view.extend({
 		fs.exec(CLI, ['update', 'auto-get']).then(r => { auto.checked = (r.stdout || '').trim() === '1'; }).catch(() => {});
 		fs.exec(CLI, ['update', 'cached']).then(r => { let j = null; try { j = JSON.parse(r.stdout || 'null'); } catch (e) {} if (j) show(j); else { fs.exec(CLI, ['version']).then(v => { vr.textContent = 'Kurulu: ' + ((v.stdout || '').trim().replace(/^KediStat /, 'v')); }).catch(() => {}); say('Henüz denetlenmedi', ''); } }).catch(() => {});
 		return h('div', { 'class': 'ks-upd' }, [
-			h('div', { 'class': 'ks-upd-h' }, [h('b', {}, '⟳ Güncelleme (GitHub)'), vr]),
+			h('div', { 'class': 'ks-upd-h' }, [h('b', {}, '⟳ Güncelleme'), vr]),
 			st,
 			h('div', { 'class': 'ks-upd-btn' }, [btnC, btnI, h('label', { 'class': 'ks-upd-auto' }, [auto, 'Yeni sürümü otomatik kur (günde bir denetlenir)'])])
 		]);
@@ -1205,6 +1271,7 @@ return view.extend({
 			h('h2', {}, [h('img', { 'src': '/luci-static/kedistat-logo.svg', 'style': 'height:1.3em;vertical-align:-0.25em;margin-right:8px;border-radius:6px' }), 'KediStat — Trafik']),
 			this.elTraffic,
 			this.buildUpdate(),
+			this.buildBackup(),
 			h('div', { 'class': 'ks-sup' }, [
 				h('div', {}, [h('b', {}, '☕ Beğendin mi?'), h('span', {}, 'KediStat ücretsiz ve açık kaynak. Emeğe küçük bir destek çok değerli.')]),
 				h('a', { 'class': 'ks-coffee', 'href': 'https://buymeacoffee.com/sabanvurgun', 'target': '_blank', 'rel': 'noopener noreferrer' }, '☕ Bana bir kahve ısmarla')
@@ -1264,6 +1331,11 @@ cat > /usr/share/rpcd/acl.d/luci-app-kedistat.json.new <<'KEDISTAT_EOF_7'
 			"file": {
 				"/usr/bin/kedistat": [ "exec" ],
 				"/usr/bin/kedistat *": [ "exec" ]
+			}
+		},
+		"write": {
+			"file": {
+				"/tmp/kedistat-restore.json": [ "write" ]
 			}
 		}
 	}
