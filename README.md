@@ -14,7 +14,7 @@ Modemde (SSH):
 wget -qO- https://raw.githubusercontent.com/sabanvurgun03-ui/kedistat/main/kedistat-install.sh | sh
 ```
 
-LuCI → Durum → **KediStat Trafik**.
+LuCI → **Araçlar** (yoksa **Hizmetler**) → **KediStat Trafik**.
 
 ## Ekran görüntüleri
 

@@ -1103,7 +1103,7 @@ ok "/www/luci-static/kedistat-logo.svg"
 mkdir -p "$(dirname /usr/share/luci/menu.d/luci-app-kedistat.json)"
 cat > /usr/share/luci/menu.d/luci-app-kedistat.json <<'KEDISTAT_EOF_6'
 {
-	"admin/status/kedistat": {
+	"admin/services/kedistat": {
 		"title": "KediStat Trafik",
 		"order": 90,
 		"action": { "type": "view", "path": "kedistat/trafik" },
@@ -1131,6 +1131,13 @@ chmod 644 /usr/share/rpcd/acl.d/luci-app-kedistat.json
 ok "/usr/share/rpcd/acl.d/luci-app-kedistat.json"
 
 
+# Menü yeri: modemde "Araçlar/Tools" menüsü varsa orada, yoksa "Hizmetler/Services" altında görünür
+MENU=/usr/share/luci/menu.d/luci-app-kedistat.json
+MPATH=admin/services; MNAME="Hizmetler"
+if cat /usr/share/luci/menu.d/*.json 2>/dev/null | grep -q '"admin/tools[/"]'; then MPATH=admin/tools; MNAME="Araçlar"; fi
+sed -i "s|\"admin/[a-z]*/kedistat\"|\"$MPATH/kedistat\"|" "$MENU"
+ok "menü yeri: $MNAME → KediStat Trafik"
+
 touch /etc/crontabs/root
 sed -i '/kedistat sample/d' /etc/crontabs/root
 echo '* * * * * /usr/bin/kedistat sample >/dev/null 2>&1' >> /etc/crontabs/root
@@ -1147,5 +1154,5 @@ ok "servis etkinleştirildi, sayaçlar başlatıldı"
 # LuCI menüsü ve yetki dosyası yenilensin
 rm -f /tmp/luci-indexcache* 2>/dev/null; rm -rf /tmp/luci-modulecache 2>/dev/null
 /etc/init.d/rpcd reload >/dev/null 2>&1
-ok "LuCI menüsü: Durum → KediStat Trafik (görmezsen LuCI'den çıkıp tekrar gir)"
+ok "LuCI menüsü hazır (görmezsen LuCI'den çıkıp tekrar gir)"
 say "==> Tamam. Veriler 1-2 dakika içinde dolar. Güncellemek için: kedistat update · Kaldırmak için: kedistat uninstall"

@@ -1,5 +1,5 @@
 {
-	"admin/status/kedistat": {
+	"admin/services/kedistat": {
 		"title": "KediStat Trafik",
 		"order": 90,
 		"action": { "type": "view", "path": "kedistat/trafik" },
