@@ -485,6 +485,7 @@ return view.extend({
 		file.addEventListener('change', () => {
 			const f = file.files && file.files[0];
 			if (!f) return;
+			if (f.size > 2097152) return say('Dosya çok büyük (en fazla 2 MB); bu bir KediStat yedeği olamaz', 'ks-bad');
 			if (!confirm('Mevcut sayaç verisi "' + f.name + '" dosyasındaki yedekle DEĞİŞTİRİLECEK. Devam edilsin mi?')) return;
 			const rd = new FileReader();
 			rd.onload = () => {

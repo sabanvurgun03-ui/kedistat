@@ -395,15 +395,35 @@ if (CMD == 'backup') {
 	exit(0);
 }
 if (CMD == 'restorefile') {
-	// Yedek dosyasından geri yükler (mevcut verinin yerine geçer)
-	let b = readj(ARGV[1] ?? '');
-	let d = b?.kedistat_backup == 1 ? b.data : null;
-	if (!d || type(d.days) != 'object' || (d.dev != null && type(d.dev) != 'object')) { print('geçersiz yedek dosyası\n'); exit(1); }
-	d.dev ??= {};
-	delete d.last; delete d.sess;
-	for (let ip, e in d.dev) delete e.last;
-	d.saved = time();
-	fs.mkdir(RUN); writej(RAMF, d); writej(FLASHF, d);
+	// Yedek dosyasından geri yükler (mevcut verinin yerine geçer). Dosyaya güvenilmez: boyut sınırlanır, yalnızca bilinen alanlar
+	// beklenen biçimde (tarih anahtarı, sayı, IP, kısa metin) alınır; gerisi atılır. Hiçbir şey çalıştırılmaz.
+	let path = ARGV[1] ?? '';
+	let st = fs.stat(path);
+	if (!st || st.type != 'file' || st.size > 2097152) { fs.unlink(path); print('geçersiz yedek dosyası (boyut)\n'); exit(1); }
+	let b = readj(path);
+	fs.unlink(path);
+	let d = (type(b) == 'object' && b.kedistat_backup == 1) ? b.data : null;
+	if (type(d) != 'object' || type(d.days) != 'object') { print('geçersiz yedek dosyası\n'); exit(1); }
+	let MAX = 1000000000000000;   // günlük üst sınır (1 PB): saçma değerleri ele
+	let num = v => { let x = n(v); return (x < 0 || x > MAX) ? 0 : x; };
+	let rt = v => ({ r: num(v?.r), t: num(v?.t) });
+	let txt = (v, m) => { let t = replace(substr('' + (v ?? ''), 0, m), /[^A-Za-z0-9 ._:@\-\u00C0-\u024F]/g, ''); return t; };
+	let o = { days: {}, months: {}, dev: {}, saved: time() }, nd = 0;
+	for (let k, v in d.days) if (match(k, /^[0-9]{4}-[0-9]{2}-[0-9]{2}$/) && nd++ < 400) o.days[k] = rt(v);
+	nd = 0;
+	if (type(d.months) == 'object') for (let k, v in d.months) if (match(k, /^[0-9]{4}-[0-9]{2}$/) && nd++ < 240) o.months[k] = rt(v);
+	let nv = 0;
+	if (type(d.dev) == 'object') for (let ip, e in d.dev) {
+		if (!match(ip, /^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$/) || nv++ >= 256 || type(e) != 'object') continue;
+		let x = { days: {} }, c = 0;
+		if (type(e.days) == 'object') for (let k, v in e.days) if (match(k, /^[0-9]{4}-[0-9]{2}-[0-9]{2}$/) && c++ < 400) x.days[k] = { rx: num(v?.rx), tx: num(v?.tx) };
+		if (e.name) x.name = txt(e.name, 40);
+		if (e.mac && match('' + e.mac, /^[0-9a-fA-F:]{11,17}$/)) x.mac = lc('' + e.mac);
+		if (e.seen) x.seen = num(e.seen);
+		if (e.active) x.active = num(e.active);
+		o.dev[ip] = x;
+	}
+	fs.mkdir(RUN); writej(RAMF, o); writej(FLASHF, o);
 	print('ok\n');
 	exit(0);
 }
@@ -1010,6 +1030,7 @@ return view.extend({
 		file.addEventListener('change', () => {
 			const f = file.files && file.files[0];
 			if (!f) return;
+			if (f.size > 2097152) return say('Dosya çok büyük (en fazla 2 MB); bu bir KediStat yedeği olamaz', 'ks-bad');
 			if (!confirm('Mevcut sayaç verisi "' + f.name + '" dosyasındaki yedekle DEĞİŞTİRİLECEK. Devam edilsin mi?')) return;
 			const rd = new FileReader();
 			rd.onload = () => {
