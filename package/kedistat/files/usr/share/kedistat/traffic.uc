@@ -128,6 +128,43 @@ if (CMD == 'restore') {
 	print('ok\n');
 	exit(0);
 }
+if (CMD == 'import') {
+	// Mevcut KediRay sayaçlarından (VPN + Direkt toplamı) geçmişi içe aktarır; KediStat'ın kendi saydığı günlere dokunmaz (büyük olanı tutar).
+	let src = getenv('KS_IMPORT') || '/etc/kediray.traffic.json';
+	let k = readj(getenv('KS_IMPORT') ? src : (readj('/var/etc/kediray/traffic.json') ? '/var/etc/kediray/traffic.json' : src));
+	if (!k || (!k.days && !k.dev)) { print('kaynak yok\n'); exit(0); }
+	let s = load(), nd = 0, nv = 0;
+	let big = (a, b) => (a > b ? a : b);
+	for (let day, v in (k.days ?? {})) {
+		let r = n(v.vr) + n(v.dr), t = n(v.vt) + n(v.dt);
+		let o = s.days[day] ?? { r: 0, t: 0 };
+		if (r > n(o.r) || t > n(o.t)) { s.days[day] = { r: big(r, n(o.r)), t: big(t, n(o.t)) }; nd++; }
+	}
+	for (let mk, v in (k.months ?? {})) {
+		s.months ??= {};
+		let r = n(v.vr) + n(v.dr), t = n(v.vt) + n(v.dt), o = s.months[mk] ?? { r: 0, t: 0 };
+		if (r > n(o.r) || t > n(o.t)) s.months[mk] = { r: big(r, n(o.r)), t: big(t, n(o.t)) };
+	}
+	for (let ip, v in (k.dev ?? {})) {
+		s.dev[ip] ??= { days: {} };
+		let e = s.dev[ip];
+		e.days ??= {};
+		for (let day, x in (v.days ?? {})) {
+			let o = e.days[day] ?? { rx: 0, tx: 0 };
+			if (n(x.rx) > n(o.rx) || n(x.tx) > n(o.tx)) { e.days[day] = { rx: big(n(x.rx), n(o.rx)), tx: big(n(x.tx), n(o.tx)) }; nv++; }
+		}
+		if (v.name && !e.name) e.name = v.name;
+		if (v.mac && !e.mac) e.mac = v.mac;
+		e.seen ??= v.seen; e.active ??= v.active;
+	}
+	// 100 günden eski günleri aya katla (örnekleme ile aynı kural)
+	let ks = sort(keys(s.days));
+	while (length(ks) > 100) { let d0 = shift(ks), mk = substr(d0, 0, 7); s.months ??= {}; s.months[mk] ??= {}; add(s.months[mk], bk(s.days[d0])); delete s.days[d0]; }
+	s.imported = time();
+	fs.mkdir(RUN); writej(RAMF, s); writej(FLASHF, s);
+	print('içe aktarıldı: ' + nd + ' gün, ' + nv + ' cihaz günü\n');
+	exit(0);
+}
 if (CMD == 'reset') { fs.unlink(RAMF); fs.unlink(FLASHF); print('ok\n'); exit(0); }
 
 if (CMD == 'report') {

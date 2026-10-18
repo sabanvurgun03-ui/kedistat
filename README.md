@@ -26,10 +26,11 @@ LuCI → **Araçlar** (yoksa **Hizmetler**) → **KediStat Trafik**.
 - Canlı hız, oturum, bugün/dün/hafta/ay/toplam kartları ve önceki dönemle karşılaştırma
 - Cihaz başına indirme/yükleme (IP, ad, MAC), bugün/hafta/ay/toplam
 - 7 gün / 30 gün / 12 ay grafiği (üzerine gelince değerler)
+- KediRay kuruluysa geçmiş verileri (günlük, aylık, cihaz başına) kurulumda otomatik içe aktarılır; elle: `kedistat import`
 - Sayaçlar RAM'de tutulur, düzenli aralıkla flaşa yazılır; yeniden başlatmada geri yüklenir
 
 ## Komutlar
-`kedistat stats | reset | version | update [check] | uninstall`
+`kedistat stats | import | reset | version | update [check] | uninstall`
 
 ## Notlar
 - Gereksinim: OpenWrt 22.03+ (fw4/nft), ucode, LuCI

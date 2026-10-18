@@ -1,6 +1,6 @@
 #!/bin/sh
 # KediStat — OpenWrt modem için trafik izleyici (toplam + cihaz başına). Geliştirici: Şaban Vurgun · 2026
-# Kullanım: kedistat stats | sample [save] | save | restore | reset | version | update [check] | uninstall
+# Kullanım: kedistat stats | sample [save] | save | restore | reset | import | version | update [check] | uninstall
 SHARE=/usr/share/kedistat
 RUN=/var/etc/kedistat
 REPO_DEF="sabanvurgun03-ui/kedistat"
@@ -120,9 +120,9 @@ cmd_uninstall() {
 case "$1" in
 	stats|"") cmd_stats ;;
 	sample) traffic_sample "$2" ;;
-	save|restore|reset) ucode "$SHARE/traffic.uc" "$1" ;;
+	save|restore|reset|import) ucode "$SHARE/traffic.uc" "$1" ;;
 	version) echo "KediStat $(ks_version)" ;;
 	update) cmd_update "$2" ;;
 	uninstall) cmd_uninstall ;;
-	*) echo "kullanım: kedistat stats | sample [save] | save | restore | reset | version | update [check] | uninstall" >&2; exit 1 ;;
+	*) echo "kullanım: kedistat stats | sample [save] | save | restore | reset | import | version | update [check] | uninstall" >&2; exit 1 ;;
 esac

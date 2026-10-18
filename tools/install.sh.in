@@ -37,6 +37,10 @@ echo "$KS_VERSION" > /usr/share/kedistat/version
 /etc/init.d/kedistat enable >/dev/null 2>&1
 /etc/init.d/kedistat start >/dev/null 2>&1
 /usr/bin/kedistat sample >/dev/null 2>&1
+# KediRay'den (varsa) geçmiş veriyi al: sayaçlar sıfırdan başlamasın
+if [ -s /etc/kediray.traffic.json ] || [ -s /var/etc/kediray/traffic.json ]; then
+	R=$(/usr/bin/kedistat import 2>/dev/null) && ok "KediRay geçmişi: $R"
+fi
 ok "servis etkinleştirildi, sayaçlar başlatıldı"
 
 # LuCI menüsü ve yetki dosyası yenilensin
