@@ -24,7 +24,7 @@ MENU=/usr/share/luci/menu.d/luci-app-kedistat.json
 MPATH=admin/services; MNAME="Hizmetler"
 if cat /usr/share/luci/menu.d/*.json 2>/dev/null | grep -q '"admin/tools[/"]'; then MPATH=admin/tools; MNAME="Araçlar"; fi
 sed -i "s|\"admin/[a-z]*/kedistat\"|\"$MPATH/kedistat\"|" "$MENU"
-ok "menü yeri: $MNAME → KediStat Trafik"
+ok "menü yeri: $MNAME → KediStat"
 
 touch /etc/crontabs/root
 sed -i '/kedistat sample/d' /etc/crontabs/root

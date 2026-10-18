@@ -1,6 +1,6 @@
 {
 	"admin/services/kedistat": {
-		"title": "KediStat Trafik",
+		"title": "KediStat",
 		"order": 90,
 		"action": { "type": "view", "path": "kedistat/trafik" },
 		"depends": { "acl": [ "luci-app-kedistat" ] }

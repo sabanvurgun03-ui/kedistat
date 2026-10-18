@@ -1387,7 +1387,7 @@ return view.extend({
 		poll.add(() => runJson(['stats']).then(s => this.renderTraffic(s)), 2);
 		return h('div', {}, [
 			h('style', {}, CSS),
-			h('h2', {}, [h('img', { 'src': '/luci-static/kedistat-logo.svg', 'style': 'height:1.3em;vertical-align:-0.25em;margin-right:8px;border-radius:6px' }), 'KediStat — Trafik']),
+			h('h2', {}, [h('img', { 'src': '/luci-static/kedistat-logo.svg', 'style': 'height:1.3em;vertical-align:-0.25em;margin-right:8px;border-radius:6px' }), 'KediStat']),
 			this.elTraffic,
 			this.buildUpdate(),
 			this.buildBackup(),
@@ -1431,7 +1431,7 @@ mkdir -p "$(dirname /usr/share/luci/menu.d/luci-app-kedistat.json)"
 cat > /usr/share/luci/menu.d/luci-app-kedistat.json.new <<'KEDISTAT_EOF_6'
 {
 	"admin/services/kedistat": {
-		"title": "KediStat Trafik",
+		"title": "KediStat",
 		"order": 90,
 		"action": { "type": "view", "path": "kedistat/trafik" },
 		"depends": { "acl": [ "luci-app-kedistat" ] }
@@ -1470,7 +1470,7 @@ MENU=/usr/share/luci/menu.d/luci-app-kedistat.json
 MPATH=admin/services; MNAME="Hizmetler"
 if cat /usr/share/luci/menu.d/*.json 2>/dev/null | grep -q '"admin/tools[/"]'; then MPATH=admin/tools; MNAME="Araçlar"; fi
 sed -i "s|\"admin/[a-z]*/kedistat\"|\"$MPATH/kedistat\"|" "$MENU"
-ok "menü yeri: $MNAME → KediStat Trafik"
+ok "menü yeri: $MNAME → KediStat"
 
 touch /etc/crontabs/root
 sed -i '/kedistat sample/d' /etc/crontabs/root

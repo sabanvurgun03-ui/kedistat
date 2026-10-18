@@ -842,7 +842,7 @@ return view.extend({
 		poll.add(() => runJson(['stats']).then(s => this.renderTraffic(s)), 2);
 		return h('div', {}, [
 			h('style', {}, CSS),
-			h('h2', {}, [h('img', { 'src': '/luci-static/kedistat-logo.svg', 'style': 'height:1.3em;vertical-align:-0.25em;margin-right:8px;border-radius:6px' }), 'KediStat — Trafik']),
+			h('h2', {}, [h('img', { 'src': '/luci-static/kedistat-logo.svg', 'style': 'height:1.3em;vertical-align:-0.25em;margin-right:8px;border-radius:6px' }), 'KediStat']),
 			this.elTraffic,
 			this.buildUpdate(),
 			this.buildBackup(),
